@@ -1,42 +1,119 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Lead, LeadStatus, ChatMessage } from '@/types/lead';
-import { sampleLeads } from '@/data/sampleLeads';
+import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
+
+type DbLead = Database['public']['Tables']['leads']['Row'];
+type DbMessage = Database['public']['Tables']['messages']['Row'];
+
+function mapDbLeadToLead(dbLead: DbLead, messages: ChatMessage[]): Lead {
+  return {
+    id: dbLead.id,
+    name: dbLead.name,
+    phone: dbLead.phone,
+    eventDate: dbLead.event_date || '',
+    city: dbLead.city || '',
+    neighborhood: dbLead.neighborhood || '',
+    childrenAge: dbLead.children_age || '',
+    childrenCount: dbLead.children_count || 0,
+    interest: dbLead.interest || '',
+    status: dbLead.status as LeadStatus,
+    channel: dbLead.channel as Lead['channel'],
+    tags: (dbLead.tags || []) as Lead['tags'],
+    messages,
+    createdAt: new Date(dbLead.created_at),
+    updatedAt: new Date(dbLead.updated_at),
+  };
+}
+
+function mapDbMessage(m: DbMessage): ChatMessage {
+  return {
+    id: m.id,
+    sender: m.sender as 'client' | 'ai',
+    text: m.text,
+    timestamp: new Date(m.created_at),
+  };
+}
 
 export function useLeads() {
-  const [leads, setLeads] = useState<Lead[]>(sampleLeads);
+  const [leads, setLeads] = useState<Lead[]>([]);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const selectedLead = leads.find(l => l.id === selectedLeadId) || null;
+  const fetchLeads = useCallback(async () => {
+    const { data: dbLeads } = await supabase
+      .from('leads')
+      .select('*')
+      .order('updated_at', { ascending: false });
 
-  const moveLeadToStatus = useCallback((leadId: string, newStatus: LeadStatus) => {
-    setLeads(prev => prev.map(l =>
-      l.id === leadId ? { ...l, status: newStatus, updatedAt: new Date() } : l
-    ));
+    if (!dbLeads) return;
+
+    const { data: dbMessages } = await supabase
+      .from('messages')
+      .select('*')
+      .order('created_at', { ascending: true });
+
+    const messagesByLead: Record<string, ChatMessage[]> = {};
+    (dbMessages || []).forEach((m) => {
+      if (!messagesByLead[m.lead_id]) messagesByLead[m.lead_id] = [];
+      messagesByLead[m.lead_id].push(mapDbMessage(m));
+    });
+
+    setLeads(dbLeads.map((l) => mapDbLeadToLead(l, messagesByLead[l.id] || [])));
+    setLoading(false);
   }, []);
 
-  const addMessage = useCallback((leadId: string, message: Omit<ChatMessage, 'id' | 'timestamp'>) => {
-    const newMsg: ChatMessage = {
-      ...message,
-      id: crypto.randomUUID(),
-      timestamp: new Date(),
+  useEffect(() => {
+    fetchLeads();
+
+    // Realtime subscriptions
+    const leadsChannel = supabase
+      .channel('leads-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, () => {
+        fetchLeads();
+      })
+      .subscribe();
+
+    const messagesChannel = supabase
+      .channel('messages-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () => {
+        fetchLeads();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(leadsChannel);
+      supabase.removeChannel(messagesChannel);
     };
-    setLeads(prev => prev.map(l =>
-      l.id === leadId ? { ...l, messages: [...l.messages, newMsg], updatedAt: new Date() } : l
-    ));
+  }, [fetchLeads]);
+
+  const selectedLead = leads.find((l) => l.id === selectedLeadId) || null;
+
+  const moveLeadToStatus = useCallback(async (leadId: string, newStatus: LeadStatus) => {
+    await supabase.from('leads').update({ status: newStatus }).eq('id', leadId);
   }, []);
 
-  const getLeadsByStatus = useCallback((status: LeadStatus) => {
-    return leads.filter(l => l.status === status);
-  }, [leads]);
+  const addMessage = useCallback(async (leadId: string, message: Omit<ChatMessage, 'id' | 'timestamp'>) => {
+    await supabase.from('messages').insert({
+      lead_id: leadId,
+      sender: message.sender,
+      text: message.text,
+    });
+  }, []);
+
+  const getLeadsByStatus = useCallback(
+    (status: LeadStatus) => leads.filter((l) => l.status === status),
+    [leads]
+  );
 
   const stats = {
     total: leads.length,
-    novo: leads.filter(l => l.status === 'novo').length,
-    analise: leads.filter(l => l.status === 'analise').length,
-    proposta: leads.filter(l => l.status === 'proposta').length,
-    contra_proposta: leads.filter(l => l.status === 'contra_proposta').length,
-    fechado: leads.filter(l => l.status === 'fechado').length,
-    perdido: leads.filter(l => l.status === 'perdido').length,
+    novo: leads.filter((l) => l.status === 'novo').length,
+    analise: leads.filter((l) => l.status === 'analise').length,
+    proposta: leads.filter((l) => l.status === 'proposta').length,
+    contra_proposta: leads.filter((l) => l.status === 'contra_proposta').length,
+    fechado: leads.filter((l) => l.status === 'fechado').length,
+    perdido: leads.filter((l) => l.status === 'perdido').length,
   };
 
   return {
@@ -48,5 +125,6 @@ export function useLeads() {
     addMessage,
     getLeadsByStatus,
     stats,
+    loading,
   };
 }
