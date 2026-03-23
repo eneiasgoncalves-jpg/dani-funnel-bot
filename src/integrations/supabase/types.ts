@@ -14,7 +14,89 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      leads: {
+        Row: {
+          channel: Database["public"]["Enums"]["sales_channel"]
+          children_age: string | null
+          children_count: number | null
+          city: string | null
+          created_at: string
+          event_date: string | null
+          id: string
+          interest: string | null
+          name: string
+          neighborhood: string | null
+          phone: string
+          status: Database["public"]["Enums"]["lead_status"]
+          tags: Database["public"]["Enums"]["lead_tag"][] | null
+          updated_at: string
+        }
+        Insert: {
+          channel?: Database["public"]["Enums"]["sales_channel"]
+          children_age?: string | null
+          children_count?: number | null
+          city?: string | null
+          created_at?: string
+          event_date?: string | null
+          id?: string
+          interest?: string | null
+          name?: string
+          neighborhood?: string | null
+          phone: string
+          status?: Database["public"]["Enums"]["lead_status"]
+          tags?: Database["public"]["Enums"]["lead_tag"][] | null
+          updated_at?: string
+        }
+        Update: {
+          channel?: Database["public"]["Enums"]["sales_channel"]
+          children_age?: string | null
+          children_count?: number | null
+          city?: string | null
+          created_at?: string
+          event_date?: string | null
+          id?: string
+          interest?: string | null
+          name?: string
+          neighborhood?: string | null
+          phone?: string
+          status?: Database["public"]["Enums"]["lead_status"]
+          tags?: Database["public"]["Enums"]["lead_tag"][] | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      messages: {
+        Row: {
+          created_at: string
+          id: string
+          lead_id: string
+          sender: string
+          text: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          lead_id: string
+          sender: string
+          text: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          lead_id?: string
+          sender?: string
+          text?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -23,7 +105,15 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      lead_status:
+        | "novo"
+        | "analise"
+        | "proposta"
+        | "contra_proposta"
+        | "fechado"
+        | "perdido"
+      lead_tag: "quente" | "duvida" | "sensivel_preco" | "frio"
+      sales_channel: "whatsapp" | "instagram" | "google" | "site" | "indicacao"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +240,17 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      lead_status: [
+        "novo",
+        "analise",
+        "proposta",
+        "contra_proposta",
+        "fechado",
+        "perdido",
+      ],
+      lead_tag: ["quente", "duvida", "sensivel_preco", "frio"],
+      sales_channel: ["whatsapp", "instagram", "google", "site", "indicacao"],
+    },
   },
 } as const
