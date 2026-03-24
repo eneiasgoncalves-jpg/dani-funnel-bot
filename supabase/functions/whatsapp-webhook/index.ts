@@ -256,7 +256,7 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         number: remoteJid,
-        text: replyText,
+        textMessage: { text: replyText },
       }),
     });
 
