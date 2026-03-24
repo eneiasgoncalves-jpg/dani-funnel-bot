@@ -55,7 +55,16 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background relative">
+      <div
+        className="fixed inset-0 z-0 opacity-[0.04] pointer-events-none"
+        style={{
+          backgroundImage: `url(${logoDani})`,
+          backgroundRepeat: 'repeat',
+          backgroundSize: '220px',
+          backgroundPosition: 'center',
+        }}
+      />
       <header className="border-b border-border bg-card sticky top-0 z-40">
         <div className="max-w-[1600px] mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
