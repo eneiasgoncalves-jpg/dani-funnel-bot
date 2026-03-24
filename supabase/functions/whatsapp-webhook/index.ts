@@ -181,6 +181,15 @@ serve(async (req) => {
       text: messageText,
     });
 
+    // Post-transfer logic: if lead was already transferred to human, don't auto-respond
+    const transferredStatuses = ["analise", "proposta", "contra_proposta", "fechado", "perdido"];
+    if (transferredStatuses.includes(lead.status)) {
+      console.log(`Lead ${lead.id} already transferred (status: ${lead.status}), skipping AI`);
+      return new Response(JSON.stringify({ status: "already_transferred" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Get conversation history
     const { data: history } = await supabase
       .from("messages")
