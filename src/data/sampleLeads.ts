@@ -113,6 +113,7 @@ export const sampleLeads: Lead[] = [
       msg('client', 'Fechado! Quero o combo completo!', 500),
       msg('ai', 'Perfeito! Vou reservar sua data agora 🙌 Vou te passar os próximos passos para garantir tudo certinho.', 498),
     ],
+    feedbackSent: true,
     createdAt: new Date(now.getTime() - 600 * 60000),
     updatedAt: now,
   },
