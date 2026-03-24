@@ -65,6 +65,10 @@ const Index = () => {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <Button variant="outline" size="sm" onClick={() => navigate('/dashboard')} className="gap-2">
+              <BarChart3 className="h-4 w-4" />
+              Dashboard
+            </Button>
             <div className="flex items-center gap-2">
               <Switch
                 checked={autoAttendance}
