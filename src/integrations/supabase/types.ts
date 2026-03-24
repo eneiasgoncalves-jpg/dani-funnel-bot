@@ -22,6 +22,7 @@ export type Database = {
           city: string | null
           created_at: string
           event_date: string | null
+          feedback_sent: boolean
           id: string
           interest: string | null
           name: string
@@ -38,6 +39,7 @@ export type Database = {
           city?: string | null
           created_at?: string
           event_date?: string | null
+          feedback_sent?: boolean
           id?: string
           interest?: string | null
           name?: string
@@ -54,6 +56,7 @@ export type Database = {
           city?: string | null
           created_at?: string
           event_date?: string | null
+          feedback_sent?: boolean
           id?: string
           interest?: string | null
           name?: string

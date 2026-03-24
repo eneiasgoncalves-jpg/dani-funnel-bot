@@ -20,6 +20,7 @@ function mapDbLeadToLead(dbLead: DbLead, messages: ChatMessage[]): Lead {
     status: dbLead.status as LeadStatus,
     channel: dbLead.channel as Lead['channel'],
     tags: (dbLead.tags || []) as Lead['tags'],
+    feedbackSent: (dbLead as any).feedback_sent ?? false,
     messages,
     createdAt: new Date(dbLead.created_at),
     updatedAt: new Date(dbLead.updated_at),
