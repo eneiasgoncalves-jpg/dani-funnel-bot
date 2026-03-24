@@ -50,6 +50,7 @@ export const sampleLeads: Lead[] = [
       msg('client', 'Umas 10 crianças, de 3 a 6 anos', 110),
       msg('ai', 'Perfeito! Para essa faixa etária, o combo Pula-Pula + Piscina de Bolinhas é sucesso garantido! 🎈 Quer que eu veja disponibilidade e valores para sua data?', 108),
     ],
+    feedbackSent: false,
     createdAt: new Date(now.getTime() - 120 * 60000),
     updatedAt: now,
   },
