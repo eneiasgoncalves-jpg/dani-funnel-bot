@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { BarChart3 } from 'lucide-react';
+import logoDani from '@/assets/logo-dani.jpg';
 
 const Index = () => {
   const navigate = useNavigate();
@@ -54,8 +55,17 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-card sticky top-0 z-40">
+    <div className="min-h-screen bg-background relative">
+      <div
+        className="fixed inset-0 z-0 opacity-[0.04] pointer-events-none"
+        style={{
+          backgroundImage: `url(${logoDani})`,
+          backgroundRepeat: 'repeat',
+          backgroundSize: '220px',
+          backgroundPosition: 'center',
+        }}
+      />
+      <header className="border-b border-border bg-card/95 backdrop-blur-sm sticky top-0 z-40">
         <div className="max-w-[1600px] mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="text-2xl">🎪</span>
@@ -87,7 +97,7 @@ const Index = () => {
         </div>
       </header>
 
-      <main className="max-w-[1600px] mx-auto px-4 py-5 space-y-5">
+      <main className="max-w-[1600px] mx-auto px-4 py-5 space-y-5 relative z-10">
         <StatsCards stats={stats} />
         <div>
           <h2 className="text-sm font-semibold text-foreground mb-3">Funil de Vendas</h2>
