@@ -283,6 +283,14 @@ serve(async (req) => {
       }
     }
 
+    // Detect transfer command and update status
+    const isTransfer = replyText.includes("[TRANSFER_TO_HUMAN]");
+    if (isTransfer) {
+      replyText = replyText.replace("[TRANSFER_TO_HUMAN]", "").trim();
+      await supabase.from("leads").update({ status: "analise" }).eq("id", lead.id);
+      console.log(`Lead ${lead.id} transferred to human, status changed to analise`);
+    }
+
     // Save AI response
     await supabase.from("messages").insert({
       lead_id: lead.id,
