@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { BarChart3 } from 'lucide-react';
+import logoDani from '@/assets/logo-dani.jpg';
 
 const Index = () => {
   const navigate = useNavigate();
