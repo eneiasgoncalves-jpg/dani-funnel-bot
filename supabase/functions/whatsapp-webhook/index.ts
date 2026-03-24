@@ -3,10 +3,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const TWILIO_GATEWAY_URL = "https://connector-gateway.lovable.dev/twilio";
 const AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
 const SYSTEM_PROMPT = `Você é uma atendente virtual da Dani Locações, empresa de locação de brinquedos infláveis para festas e eventos.
@@ -49,26 +48,66 @@ serve(async (req) => {
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
   const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-  const TWILIO_API_KEY = Deno.env.get("TWILIO_API_KEY");
+  const EVOLUTION_API_URL = Deno.env.get("EVOLUTION_API_URL");
+  const EVOLUTION_API_KEY = Deno.env.get("EVOLUTION_API_KEY");
+  const EVOLUTION_INSTANCE_NAME = Deno.env.get("EVOLUTION_INSTANCE_NAME");
 
   if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
-  if (!TWILIO_API_KEY) throw new Error("TWILIO_API_KEY is not configured");
+  if (!EVOLUTION_API_URL) throw new Error("EVOLUTION_API_URL is not configured");
+  if (!EVOLUTION_API_KEY) throw new Error("EVOLUTION_API_KEY is not configured");
+  if (!EVOLUTION_INSTANCE_NAME) throw new Error("EVOLUTION_INSTANCE_NAME is not configured");
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
-    // Twilio sends form-encoded data
-    const formData = await req.formData();
-    const from = formData.get("From") as string; // whatsapp:+5511...
-    const body = formData.get("Body") as string;
-    const to = formData.get("To") as string;
+    const payload = await req.json();
+    console.log("Evolution webhook payload:", JSON.stringify(payload));
 
-    if (!from || !body) {
-      return new Response("Missing params", { status: 400, headers: corsHeaders });
+    // Evolution API sends different event types
+    const event = payload.event;
+    
+    // Only process incoming messages
+    if (event !== "messages.upsert") {
+      console.log("Ignoring event:", event);
+      return new Response(JSON.stringify({ status: "ignored", event }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    const phone = from.replace("whatsapp:", "");
-    console.log(`Message from ${phone}: ${body}`);
+    const data = payload.data;
+    if (!data) {
+      return new Response(JSON.stringify({ status: "no data" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Skip messages sent by the bot itself
+    if (data.key?.fromMe) {
+      console.log("Skipping own message");
+      return new Response(JSON.stringify({ status: "skipped_own" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Extract message text (support text and extended text messages)
+    const messageText = data.message?.conversation 
+      || data.message?.extendedTextMessage?.text
+      || "";
+    
+    if (!messageText) {
+      console.log("No text in message, skipping");
+      return new Response(JSON.stringify({ status: "no_text" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Extract phone number (remoteJid format: 5511999999999@s.whatsapp.net)
+    const remoteJid = data.key?.remoteJid || "";
+    const phone = "+" + remoteJid.replace("@s.whatsapp.net", "").replace("@g.us", "");
+    const pushName = data.pushName || "";
+
+    console.log(`Message from ${phone} (${pushName}): ${messageText}`);
 
     // Find or create lead
     let { data: lead } = await supabase
@@ -80,19 +119,29 @@ serve(async (req) => {
     if (!lead) {
       const { data: newLead, error: insertErr } = await supabase
         .from("leads")
-        .insert({ phone, name: "", channel: "whatsapp", status: "novo", tags: [] })
+        .insert({ 
+          phone, 
+          name: pushName || "", 
+          channel: "whatsapp", 
+          status: "novo", 
+          tags: [] 
+        })
         .select()
         .single();
 
       if (insertErr) throw new Error(`Failed to create lead: ${insertErr.message}`);
       lead = newLead;
+    } else if (pushName && !lead.name) {
+      // Update name if we got it from pushName
+      await supabase.from("leads").update({ name: pushName }).eq("id", lead.id);
+      lead.name = pushName;
     }
 
     // Save incoming message
     await supabase.from("messages").insert({
       lead_id: lead.id,
       sender: "client",
-      text: body,
+      text: messageText,
     });
 
     // Get conversation history
@@ -195,44 +244,39 @@ serve(async (req) => {
       text: replyText,
     });
 
-    // Send reply via Twilio WhatsApp
-    const twilioResponse = await fetch(`${TWILIO_GATEWAY_URL}/Messages.json`, {
+    // Send reply via Evolution API
+    const evolutionUrl = `${EVOLUTION_API_URL}/message/sendText/${EVOLUTION_INSTANCE_NAME}`;
+    console.log("Sending to Evolution:", evolutionUrl);
+
+    const evolutionResponse = await fetch(evolutionUrl, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "X-Connection-Api-Key": TWILIO_API_KEY,
-        "Content-Type": "application/x-www-form-urlencoded",
+        "Content-Type": "application/json",
+        apikey: EVOLUTION_API_KEY,
       },
-      body: new URLSearchParams({
-        To: from,
-        From: to,
-        Body: replyText,
+      body: JSON.stringify({
+        number: remoteJid,
+        text: replyText,
       }),
     });
 
-    if (!twilioResponse.ok) {
-      const twilioErr = await twilioResponse.text();
-      console.error("Twilio error:", twilioResponse.status, twilioErr);
+    if (!evolutionResponse.ok) {
+      const evoErr = await evolutionResponse.text();
+      console.error("Evolution API error:", evolutionResponse.status, evoErr);
     } else {
-      const twilioData = await twilioResponse.json();
-      console.log("Message sent:", twilioData.sid);
+      const evoData = await evolutionResponse.json();
+      console.log("Message sent via Evolution:", JSON.stringify(evoData));
     }
 
-    // Return TwiML empty response
-    return new Response(
-      '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
-      {
-        headers: { ...corsHeaders, "Content-Type": "text/xml" },
-      }
-    );
+    return new Response(JSON.stringify({ status: "ok" }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   } catch (error) {
     console.error("Webhook error:", error);
     const msg = error instanceof Error ? error.message : "Unknown error";
-    return new Response(
-      '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
-      {
-        headers: { ...corsHeaders, "Content-Type": "text/xml" },
-      }
-    );
+    return new Response(JSON.stringify({ status: "error", message: msg }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });
