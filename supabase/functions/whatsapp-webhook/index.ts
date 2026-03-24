@@ -90,7 +90,38 @@ serve(async (req) => {
       });
     }
 
-    // Extract message text (support text and extended text messages)
+    // Check if auto attendance is enabled
+    const { data: setting } = await supabase
+      .from("settings")
+      .select("value")
+      .eq("key", "auto_attendance")
+      .single();
+
+    if (!setting || setting.value !== true) {
+      console.log("Auto attendance is disabled, saving message only");
+      
+      // Still save the message even if auto attendance is off
+      const phone = "+" + (data.key?.remoteJid || "").replace("@s.whatsapp.net", "").replace("@g.us", "");
+      const messageText = data.message?.conversation || data.message?.extendedTextMessage?.text || "";
+      const pushName = data.pushName || "";
+      
+      if (messageText) {
+        let { data: lead } = await supabase.from("leads").select("*").eq("phone", phone).single();
+        if (!lead) {
+          const { data: newLead } = await supabase.from("leads")
+            .insert({ phone, name: pushName || "", channel: "whatsapp", status: "novo", tags: [] })
+            .select().single();
+          lead = newLead;
+        }
+        if (lead) {
+          await supabase.from("messages").insert({ lead_id: lead.id, sender: "client", text: messageText });
+        }
+      }
+
+      return new Response(JSON.stringify({ status: "auto_attendance_disabled" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     const messageText = data.message?.conversation 
       || data.message?.extendedTextMessage?.text
       || "";

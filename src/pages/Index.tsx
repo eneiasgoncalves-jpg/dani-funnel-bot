@@ -1,7 +1,11 @@
+import { useState, useEffect } from 'react';
 import { useLeads } from '@/hooks/useLeads';
 import { KanbanBoard } from '@/components/KanbanBoard';
 import { LeadDetailPanel } from '@/components/LeadDetailPanel';
 import { StatsCards } from '@/components/StatsCards';
+import { supabase } from '@/integrations/supabase/client';
+import { Switch } from '@/components/ui/switch';
+import { toast } from 'sonner';
 
 const Index = () => {
   const {
@@ -13,9 +17,40 @@ const Index = () => {
     stats,
   } = useLeads();
 
+  const [autoAttendance, setAutoAttendance] = useState(true);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const fetchSetting = async () => {
+      const { data } = await supabase
+        .from('settings')
+        .select('value')
+        .eq('key', 'auto_attendance')
+        .single();
+      if (data) setAutoAttendance(data.value === true);
+    };
+    fetchSetting();
+  }, []);
+
+  const toggleAutoAttendance = async () => {
+    setLoading(true);
+    const newValue = !autoAttendance;
+    const { error } = await supabase
+      .from('settings')
+      .update({ value: newValue, updated_at: new Date().toISOString() })
+      .eq('key', 'auto_attendance');
+
+    if (error) {
+      toast.error('Erro ao alterar configuração');
+    } else {
+      setAutoAttendance(newValue);
+      toast.success(newValue ? 'Atendimento automático ativado' : 'Atendimento automático desativado');
+    }
+    setLoading(false);
+  };
+
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <header className="border-b border-border bg-card sticky top-0 z-40">
         <div className="max-w-[1600px] mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -25,15 +60,25 @@ const Index = () => {
               <p className="text-[11px] text-muted-foreground">CRM de Vendas • Brinquedos Infláveis</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground bg-muted px-3 py-1.5 rounded-full">
-              💬 Atendimento Automático Ativo
-            </span>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={autoAttendance}
+                onCheckedChange={toggleAutoAttendance}
+                disabled={loading}
+              />
+              <span className={`text-xs px-3 py-1.5 rounded-full ${
+                autoAttendance
+                  ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20'
+                  : 'bg-muted text-muted-foreground'
+              }`}>
+                {autoAttendance ? '🤖 IA Ativa' : '⏸️ IA Pausada'}
+              </span>
+            </div>
           </div>
         </div>
       </header>
 
-      {/* Content */}
       <main className="max-w-[1600px] mx-auto px-4 py-5 space-y-5">
         <StatsCards stats={stats} />
         <div>
@@ -45,7 +90,6 @@ const Index = () => {
         </div>
       </main>
 
-      {/* Detail Panel */}
       {selectedLead && (
         <>
           <div
