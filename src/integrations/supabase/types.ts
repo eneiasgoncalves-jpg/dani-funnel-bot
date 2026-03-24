@@ -65,6 +65,39 @@ export type Database = {
         }
         Relationships: []
       }
+      leads_analytics: {
+        Row: {
+          cidade: string | null
+          cliente_whatsapp: string
+          data_entrada: string
+          data_fechamento: string | null
+          id: string
+          plataforma: string
+          status: string
+          valor_contrato: number | null
+        }
+        Insert: {
+          cidade?: string | null
+          cliente_whatsapp: string
+          data_entrada?: string
+          data_fechamento?: string | null
+          id?: string
+          plataforma?: string
+          status?: string
+          valor_contrato?: number | null
+        }
+        Update: {
+          cidade?: string | null
+          cliente_whatsapp?: string
+          data_entrada?: string
+          data_fechamento?: string | null
+          id?: string
+          plataforma?: string
+          status?: string
+          valor_contrato?: number | null
+        }
+        Relationships: []
+      }
       messages: {
         Row: {
           created_at: string

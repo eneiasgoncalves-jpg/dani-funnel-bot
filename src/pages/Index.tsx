@@ -5,9 +5,13 @@ import { LeadDetailPanel } from '@/components/LeadDetailPanel';
 import { StatsCards } from '@/components/StatsCards';
 import { supabase } from '@/integrations/supabase/client';
 import { Switch } from '@/components/ui/switch';
+import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
+import { BarChart3 } from 'lucide-react';
 
 const Index = () => {
+  const navigate = useNavigate();
   const {
     selectedLead,
     setSelectedLeadId,
@@ -61,6 +65,10 @@ const Index = () => {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <Button variant="outline" size="sm" onClick={() => navigate('/dashboard')} className="gap-2">
+              <BarChart3 className="h-4 w-4" />
+              Dashboard
+            </Button>
             <div className="flex items-center gap-2">
               <Switch
                 checked={autoAttendance}
