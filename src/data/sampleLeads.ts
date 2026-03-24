@@ -133,6 +133,7 @@ export const sampleLeads: Lead[] = [
     messages: [
       msg('ai', 'Qualquer coisa, fico à disposição 😊', 1000),
     ],
+    feedbackSent: false,
     createdAt: new Date(now.getTime() - 1200 * 60000),
     updatedAt: now,
   },
