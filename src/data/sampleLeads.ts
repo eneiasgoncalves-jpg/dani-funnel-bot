@@ -71,6 +71,7 @@ export const sampleLeads: Lead[] = [
       msg('ai', 'Ana, para 20 crianças de 7-10 anos, recomendo o combo Tobogã + Futebol de Sabão! O valor fica R$ 450 para o dia inteiro. Inclui montagem, monitores e seguro! 🙌', 60),
       msg('client', 'Achei interessante! Tem como parcelar?', 55),
     ],
+    feedbackSent: false,
     createdAt: new Date(now.getTime() - 240 * 60000),
     updatedAt: now,
   },
