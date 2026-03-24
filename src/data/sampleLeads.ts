@@ -27,6 +27,7 @@ export const sampleLeads: Lead[] = [
       msg('ai', 'Oi Maria! 😊 Tudo bem? Que legal que está planejando uma festinha! Me conta, qual a data do evento?', 28),
       msg('client', 'Dia 15 de abril', 25),
     ],
+    feedbackSent: false,
     createdAt: new Date(now.getTime() - 30 * 60000),
     updatedAt: now,
   },
