@@ -11,6 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import { BarChart3 } from 'lucide-react';
 
 const Index = () => {
+  const navigate = useNavigate();
   const {
     selectedLead,
     setSelectedLeadId,
