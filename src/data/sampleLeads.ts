@@ -92,6 +92,7 @@ export const sampleLeads: Lead[] = [
       msg('client', 'Achei um pouco caro... tem algo mais em conta?', 180),
       msg('ai', 'Entendo Carlos! 😊 Olha, temos o Pula-Pula simples que fica por R$ 200 e é perfeito para essa quantidade de crianças. Quer saber mais?', 175),
     ],
+    feedbackSent: false,
     createdAt: new Date(now.getTime() - 300 * 60000),
     updatedAt: now,
   },
