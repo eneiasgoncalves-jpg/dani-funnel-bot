@@ -1,5 +1,5 @@
 import { Lead, TAG_CONFIG, CHANNEL_CONFIG } from '@/types/lead';
-import { Phone, Calendar, MapPin, Users } from 'lucide-react';
+import { Phone, Calendar, MapPin, Users, CheckCircle2, Clock } from 'lucide-react';
 
 interface LeadCardProps {
   lead: Lead;
