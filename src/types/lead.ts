@@ -24,6 +24,7 @@ export interface Lead {
   status: LeadStatus;
   channel: SalesChannel;
   tags: LeadTag[];
+  feedbackSent: boolean;
   messages: ChatMessage[];
   createdAt: Date;
   updatedAt: Date;

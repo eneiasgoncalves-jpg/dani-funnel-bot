@@ -48,6 +48,17 @@ export function LeadCard({ lead, onClick }: LeadCardProps) {
         <p className="text-xs text-primary font-medium mb-2">🎈 {lead.interest}</p>
       )}
 
+      {lead.status === 'fechado' && (
+        <div className={`flex items-center gap-1.5 text-[10px] font-medium px-2 py-1 rounded-full mb-2 ${
+          lead.feedbackSent
+            ? 'bg-emerald-500/10 text-emerald-600'
+            : 'bg-amber-500/10 text-amber-600'
+        }`}>
+          {lead.feedbackSent ? <CheckCircle2 className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
+          {lead.feedbackSent ? 'Feedback Enviado' : 'Feedback Pendente'}
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-1">
         {lead.tags.map(tag => {
           const config = TAG_CONFIG[tag];
