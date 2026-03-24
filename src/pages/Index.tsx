@@ -97,7 +97,7 @@ const Index = () => {
         </div>
       </header>
 
-      <main className="max-w-[1600px] mx-auto px-4 py-5 space-y-5">
+      <main className="max-w-[1600px] mx-auto px-4 py-5 space-y-5 relative z-10">
         <StatsCards stats={stats} />
         <div>
           <h2 className="text-sm font-semibold text-foreground mb-3">Funil de Vendas</h2>
