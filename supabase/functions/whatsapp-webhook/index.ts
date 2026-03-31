@@ -69,6 +69,9 @@ serve(async (req) => {
     const payload = await req.json();
     console.log("Evolution webhook payload:", JSON.stringify(payload));
 
+    // Extract the real sender phone from the payload (handles @lid format)
+    const senderFromPayload = payload.sender || ""; // e.g. "555180134657@s.whatsapp.net"
+
     // Evolution API sends different event types
     const event = payload.event;
     
@@ -107,7 +110,10 @@ serve(async (req) => {
       console.log("Auto attendance is disabled, saving message only");
       
       // Still save the message even if auto attendance is off
-      const phone = "+" + (data.key?.remoteJid || "").replace("@s.whatsapp.net", "").replace("@g.us", "");
+      // Use sender field for real phone when remoteJid is @lid format
+      const rawJid = data.key?.remoteJid || "";
+      const realSender = rawJid.includes("@lid") ? senderFromPayload : rawJid;
+      const phone = "+" + realSender.replace("@s.whatsapp.net", "").replace("@g.us", "");
       const messageText = data.message?.conversation || data.message?.extendedTextMessage?.text || "";
       const pushName = data.pushName || "";
       
@@ -139,9 +145,12 @@ serve(async (req) => {
       });
     }
 
-    // Extract phone number (remoteJid format: 5511999999999@s.whatsapp.net)
-    const remoteJid = data.key?.remoteJid || "";
-    const phone = "+" + remoteJid.replace("@s.whatsapp.net", "").replace("@g.us", "");
+    // Extract phone number - handle @lid format by using sender field from payload
+    const rawRemoteJid = data.key?.remoteJid || "";
+    const isLidFormat = rawRemoteJid.includes("@lid");
+    const realJid = isLidFormat ? senderFromPayload : rawRemoteJid;
+    const remoteJid = isLidFormat ? senderFromPayload : rawRemoteJid;
+    const phone = "+" + realJid.replace("@s.whatsapp.net", "").replace("@g.us", "");
     const pushName = data.pushName || "";
 
     console.log(`Message from ${phone} (${pushName}): ${messageText}`);
