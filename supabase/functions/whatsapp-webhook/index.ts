@@ -110,7 +110,10 @@ serve(async (req) => {
       console.log("Auto attendance is disabled, saving message only");
       
       // Still save the message even if auto attendance is off
-      const phone = "+" + (data.key?.remoteJid || "").replace("@s.whatsapp.net", "").replace("@g.us", "");
+      // Use sender field for real phone when remoteJid is @lid format
+      const rawJid = data.key?.remoteJid || "";
+      const realSender = rawJid.includes("@lid") ? senderFromPayload : rawJid;
+      const phone = "+" + realSender.replace("@s.whatsapp.net", "").replace("@g.us", "");
       const messageText = data.message?.conversation || data.message?.extendedTextMessage?.text || "";
       const pushName = data.pushName || "";
       
