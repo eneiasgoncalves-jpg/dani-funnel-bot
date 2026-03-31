@@ -247,69 +247,13 @@ serve(async (req) => {
                   new_status: { type: "string", enum: ["novo", "analise", "proposta", "contra_proposta", "fechado", "perdido"] },
                   tags: { type: "array", items: { type: "string", enum: ["quente", "duvida", "sensivel_preco", "frio"] } },
                 },
-              },
-            },
-          },
-        ],
-      }),
-    });
-
-    if (!aiResponse.ok) {
-      const errText = await aiResponse.text();
-      console.error("AI error:", aiResponse.status, errText);
-      throw new Error(`AI gateway error [${aiResponse.status}]: ${errText}`);
-    }
-
-    const aiData = await aiResponse.json();
-    const choice = aiData.choices?.[0];
-    let replyText = choice?.message?.content || "Desculpe, tive um problema. Pode repetir? 😊";
-
-    // Process tool calls (update lead data)
-    if (choice?.message?.tool_calls) {
-      for (const tc of choice.message.tool_calls) {
-        if (tc.function?.name === "update_lead") {
-          try {
-            const updates = JSON.parse(tc.function.arguments);
-            const leadUpdate: Record<string, unknown> = {};
-            if (updates.name) leadUpdate.name = updates.name;
-            if (updates.event_date) leadUpdate.event_date = updates.event_date;
-            if (updates.city) leadUpdate.city = updates.city;
-            if (updates.neighborhood) leadUpdate.neighborhood = updates.neighborhood;
-            if (updates.children_age) leadUpdate.children_age = updates.children_age;
-            if (updates.children_count) leadUpdate.children_count = updates.children_count;
-            if (updates.interest) leadUpdate.interest = updates.interest;
-            if (updates.new_status) leadUpdate.status = updates.new_status;
-            if (updates.tags) leadUpdate.tags = updates.tags;
-
-            if (Object.keys(leadUpdate).length > 0) {
-              await supabase.from("leads").update(leadUpdate).eq("id", lead.id);
-              console.log("Lead updated:", leadUpdate);
-            }
-          } catch (e) {
-            console.error("Failed to parse tool call:", e);
-          }
-        }
-      }
-    }
-
-    // Detect transfer command and update status
-    const isTransfer = replyText.includes("[TRANSFER_TO_HUMAN]");
-    if (isTransfer) {
-      replyText = replyText.replace("[TRANSFER_TO_HUMAN]", "").trim();
-      await supabase.from("leads").update({ status: "analise" }).eq("id", lead.id);
-      console.log(`Lead ${lead.id} transferred to human, status changed to analise`);
-    }
-
-    // Save AI response
-    await supabase.from("messages").insert({
-      lead_id: lead.id,
-      sender: "ai",
-      text: replyText,
-    });
-
-    // Send reply via Evolution API
+// Send reply via Evolution API
     const evolutionUrl = `${EVOLUTION_API_URL}/message/sendText/${EVOLUTION_INSTANCE_NAME}`;
-    console.log("Sending to Evolution:", evolutionUrl);
+    
+    // Garantimos que temos um ID válido e removemos o sufixo para o campo 'number'
+    const cleanNumber = (realJid || senderFromPayload || "").split('@')[0];
+
+    console.log(`Sending reply to ${cleanNumber} via Evolution...`);
 
     const evolutionResponse = await fetch(evolutionUrl, {
       method: "POST",
@@ -318,22 +262,23 @@ serve(async (req) => {
         apikey: EVOLUTION_API_KEY,
       },
       body: JSON.stringify({
-        number: realJid,
+        number: cleanNumber,
         textMessage: { text: replyText },
       }),
     });
 
+    const responseText = await evolutionResponse.text();
+    
     if (!evolutionResponse.ok) {
-      const evoErr = await evolutionResponse.text();
-      console.error("Evolution API error:", evolutionResponse.status, evoErr);
+      console.error("Evolution API error details:", responseText);
     } else {
-      const evoData = await evolutionResponse.json();
-      console.log("Message sent via Evolution:", JSON.stringify(evoData));
+      console.log("Evolution API success response:", responseText);
     }
 
     return new Response(JSON.stringify({ status: "ok" }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+
   } catch (error) {
     console.error("Webhook error:", error);
     const msg = error instanceof Error ? error.message : "Unknown error";
