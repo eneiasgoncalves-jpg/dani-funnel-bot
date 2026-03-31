@@ -145,9 +145,12 @@ serve(async (req) => {
       });
     }
 
-    // Extract phone number (remoteJid format: 5511999999999@s.whatsapp.net)
-    const remoteJid = data.key?.remoteJid || "";
-    const phone = "+" + remoteJid.replace("@s.whatsapp.net", "").replace("@g.us", "");
+    // Extract phone number - handle @lid format by using sender field from payload
+    const rawRemoteJid = data.key?.remoteJid || "";
+    const isLidFormat = rawRemoteJid.includes("@lid");
+    const realJid = isLidFormat ? senderFromPayload : rawRemoteJid;
+    const remoteJid = isLidFormat ? senderFromPayload : rawRemoteJid;
+    const phone = "+" + realJid.replace("@s.whatsapp.net", "").replace("@g.us", "");
     const pushName = data.pushName || "";
 
     console.log(`Message from ${phone} (${pushName}): ${messageText}`);
