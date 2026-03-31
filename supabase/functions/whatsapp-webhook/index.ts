@@ -69,13 +69,10 @@ serve(async (req) => {
     const payload = await req.json();
     console.log("Evolution webhook payload:", JSON.stringify(payload));
 
-    // Extract the real sender phone from the payload (handles @lid format)
-    const senderFromPayload = payload.sender || ""; // e.g. "555180134657@s.whatsapp.net"
+    const senderFromPayload = payload.sender || ""; 
 
-    // Evolution API sends different event types
     const event = payload.event;
     
-    // Only process incoming messages
     if (event !== "messages.upsert") {
       console.log("Ignoring event:", event);
       return new Response(JSON.stringify({ status: "ignored", event }), {
@@ -91,7 +88,6 @@ serve(async (req) => {
       });
     }
 
-    // Skip messages sent by the bot itself
     if (data.key?.fromMe) {
       console.log("Skipping own message");
       return new Response(JSON.stringify({ status: "skipped_own" }), {
@@ -99,7 +95,6 @@ serve(async (req) => {
       });
     }
 
-    // Check if auto attendance is enabled
     const { data: setting } = await supabase
       .from("settings")
       .select("value")
@@ -109,8 +104,6 @@ serve(async (req) => {
     if (!setting || setting.value !== true) {
       console.log("Auto attendance is disabled, saving message only");
       
-      // Still save the message even if auto attendance is off
-      // Use sender field for real phone when remoteJid is @lid format
       const rawJid = data.key?.remoteJid || "";
       const realSender = rawJid.includes("@lid") ? senderFromPayload : rawJid;
       const phone = "+" + realSender.replace("@s.whatsapp.net", "").replace("@g.us", "");
@@ -134,6 +127,7 @@ serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
     const messageText = data.message?.conversation 
       || data.message?.extendedTextMessage?.text
       || "";
@@ -145,7 +139,6 @@ serve(async (req) => {
       });
     }
 
-    // Extract phone number - handle @lid format by using sender field from payload
     const rawRemoteJid = data.key?.remoteJid || "";
     const isLidFormat = rawRemoteJid.includes("@lid");
     const realJid = isLidFormat ? senderFromPayload : rawRemoteJid;
@@ -155,7 +148,6 @@ serve(async (req) => {
 
     console.log(`Message from ${phone} (${pushName}): ${messageText}`);
 
-    // Find or create lead
     let { data: lead } = await supabase
       .from("leads")
       .select("*")
@@ -178,19 +170,16 @@ serve(async (req) => {
       if (insertErr) throw new Error(`Failed to create lead: ${insertErr.message}`);
       lead = newLead;
     } else if (pushName && !lead.name) {
-      // Update name if we got it from pushName
       await supabase.from("leads").update({ name: pushName }).eq("id", lead.id);
       lead.name = pushName;
     }
 
-    // Save incoming message
     await supabase.from("messages").insert({
       lead_id: lead.id,
       sender: "client",
       text: messageText,
     });
 
-    // Post-transfer logic: if lead was already transferred to human, don't auto-respond
     const transferredStatuses = ["analise", "proposta", "contra_proposta", "fechado", "perdido"];
     if (transferredStatuses.includes(lead.status)) {
       console.log(`Lead ${lead.id} already transferred (status: ${lead.status}), skipping AI`);
@@ -199,7 +188,6 @@ serve(async (req) => {
       });
     }
 
-    // Get conversation history
     const { data: history } = await supabase
       .from("messages")
       .select("sender, text")
@@ -212,10 +200,8 @@ serve(async (req) => {
       content: m.text,
     }));
 
-    // Add current lead context
     const context = `Contexto do lead: Nome: ${lead.name || "não informado"}, Telefone: ${phone}, Data do evento: ${lead.event_date || "não informada"}, Cidade: ${lead.city || "não informada"}, Bairro: ${lead.neighborhood || "não informado"}, Idade das crianças: ${lead.children_age || "não informada"}, Qtd crianças: ${lead.children_count || "não informada"}, Interesse: ${lead.interest || "não informado"}, Status: ${lead.status}`;
 
-    // Call AI
     const aiResponse = await fetch(AI_GATEWAY_URL, {
       method: "POST",
       headers: {
@@ -247,13 +233,65 @@ serve(async (req) => {
                   new_status: { type: "string", enum: ["novo", "analise", "proposta", "contra_proposta", "fechado", "perdido"] },
                   tags: { type: "array", items: { type: "string", enum: ["quente", "duvida", "sensivel_preco", "frio"] } },
                 },
-// Send reply via Evolution API
-    const evolutionUrl = `${EVOLUTION_API_URL}/message/sendText/${EVOLUTION_INSTANCE_NAME}`;
-    
-    // Garantimos que temos um ID válido e removemos o sufixo para o campo 'number'
-    const cleanNumber = (realJid || senderFromPayload || "").split('@')[0];
+              },
+            },
+          },
+        ],
+      }),
+    });
 
-    console.log(`Sending reply to ${cleanNumber} via Evolution...`);
+    if (!aiResponse.ok) {
+      const errText = await aiResponse.text();
+      console.error("AI error:", aiResponse.status, errText);
+      throw new Error(`AI gateway error [${aiResponse.status}]: ${errText}`);
+    }
+
+    const aiData = await aiResponse.json();
+    const choice = aiData.choices?.[0];
+    let replyText = choice?.message?.content || "Desculpe, tive um problema. Pode repetir? 😊";
+
+    if (choice?.message?.tool_calls) {
+      for (const tc of choice.message.tool_calls) {
+        if (tc.function?.name === "update_lead") {
+          try {
+            const updates = JSON.parse(tc.function.arguments);
+            const leadUpdate: Record<string, unknown> = {};
+            if (updates.name) leadUpdate.name = updates.name;
+            if (updates.event_date) leadUpdate.event_date = updates.event_date;
+            if (updates.city) leadUpdate.city = updates.city;
+            if (updates.neighborhood) leadUpdate.neighborhood = updates.neighborhood;
+            if (updates.children_age) leadUpdate.children_age = updates.children_age;
+            if (updates.children_count) leadUpdate.children_count = updates.children_count;
+            if (updates.interest) leadUpdate.interest = updates.interest;
+            if (updates.new_status) leadUpdate.status = updates.new_status;
+            if (updates.tags) leadUpdate.tags = updates.tags;
+
+            if (Object.keys(leadUpdate).length > 0) {
+              await supabase.from("leads").update(leadUpdate).eq("id", lead.id);
+              console.log("Lead updated:", leadUpdate);
+            }
+          } catch (e) {
+            console.error("Failed to parse tool call:", e);
+          }
+        }
+      }
+    }
+
+    const isTransfer = replyText.includes("[TRANSFER_TO_HUMAN]");
+    if (isTransfer) {
+      replyText = replyText.replace("[TRANSFER_TO_HUMAN]", "").trim();
+      await supabase.from("leads").update({ status: "analise" }).eq("id", lead.id);
+      console.log(`Lead ${lead.id} transferred to human, status changed to analise`);
+    }
+
+    await supabase.from("messages").insert({
+      lead_id: lead.id,
+      sender: "ai",
+      text: replyText,
+    });
+
+    const evolutionUrl = `${EVOLUTION_API_URL}/message/sendText/${EVOLUTION_INSTANCE_NAME}`;
+    console.log("Sending to Evolution:", evolutionUrl);
 
     const evolutionResponse = await fetch(evolutionUrl, {
       method: "POST",
@@ -262,23 +300,22 @@ serve(async (req) => {
         apikey: EVOLUTION_API_KEY,
       },
       body: JSON.stringify({
-        number: cleanNumber,
+        number: remoteJid,
         textMessage: { text: replyText },
       }),
     });
 
-    const responseText = await evolutionResponse.text();
-    
     if (!evolutionResponse.ok) {
-      console.error("Evolution API error details:", responseText);
+      const evoErr = await evolutionResponse.text();
+      console.error("Evolution API error:", evolutionResponse.status, evoErr);
     } else {
-      console.log("Evolution API success response:", responseText);
+      const evoData = await evolutionResponse.json();
+      console.log("Message sent via Evolution:", JSON.stringify(evoData));
     }
 
     return new Response(JSON.stringify({ status: "ok" }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-
   } catch (error) {
     console.error("Webhook error:", error);
     const msg = error instanceof Error ? error.message : "Unknown error";
