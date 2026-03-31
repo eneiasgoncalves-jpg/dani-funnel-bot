@@ -69,6 +69,9 @@ serve(async (req) => {
     const payload = await req.json();
     console.log("Evolution webhook payload:", JSON.stringify(payload));
 
+    // Extract the real sender phone from the payload (handles @lid format)
+    const senderFromPayload = payload.sender || ""; // e.g. "555180134657@s.whatsapp.net"
+
     // Evolution API sends different event types
     const event = payload.event;
     
