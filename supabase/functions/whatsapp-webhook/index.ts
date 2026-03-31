@@ -318,7 +318,7 @@ serve(async (req) => {
         apikey: EVOLUTION_API_KEY,
       },
       body: JSON.stringify({
-        number: remoteJid,
+        number: realJid,
         textMessage: { text: replyText },
       }),
     });
