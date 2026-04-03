@@ -4,9 +4,12 @@ import { LeadCard } from './LeadCard';
 interface KanbanBoardProps {
   getLeadsByStatus: (status: LeadStatus) => Lead[];
   onLeadClick: (leadId: string) => void;
+  getUnreadCount?: (leadId: string) => number;
+  onDeleteLead?: (leadId: string) => void;
+  onArchiveLead?: (leadId: string) => void;
 }
 
-export function KanbanBoard({ getLeadsByStatus, onLeadClick }: KanbanBoardProps) {
+export function KanbanBoard({ getLeadsByStatus, onLeadClick, getUnreadCount, onDeleteLead, onArchiveLead }: KanbanBoardProps) {
   return (
     <div className="flex gap-4 overflow-x-auto pb-4 px-1">
       {STAGES.map(status => {
@@ -26,7 +29,14 @@ export function KanbanBoard({ getLeadsByStatus, onLeadClick }: KanbanBoardProps)
                 <p className="text-xs text-muted-foreground text-center py-8">Nenhum lead</p>
               ) : (
                 leads.map(lead => (
-                  <LeadCard key={lead.id} lead={lead} onClick={() => onLeadClick(lead.id)} />
+                  <LeadCard
+                    key={lead.id}
+                    lead={lead}
+                    onClick={() => onLeadClick(lead.id)}
+                    unreadCount={getUnreadCount?.(lead.id) ?? 0}
+                    onDelete={onDeleteLead}
+                    onArchive={onArchiveLead}
+                  />
                 ))
               )}
             </div>

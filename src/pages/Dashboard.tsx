@@ -7,7 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts';
-import { Users, TrendingUp, DollarSign, UserX, ArrowLeft } from 'lucide-react';
+import { Users, TrendingUp, DollarSign, UserX, ArrowLeft, Sun, Moon } from 'lucide-react';
+import { useTheme } from '@/hooks/useTheme';
 import logoDani from '@/assets/logo-dani.jpg';
 import { useNavigate } from 'react-router-dom';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
@@ -47,6 +48,7 @@ const monthOptions = () => {
 };
 
 export default function Dashboard() {
+  const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const [leads, setLeads] = useState<LeadAnalytics[]>([]);
   const [allLeads, setAllLeads] = useState<LeadAnalytics[]>([]);
@@ -149,6 +151,9 @@ export default function Dashboard() {
           <div className="flex items-center gap-3">
             <Button variant="ghost" size="icon" onClick={() => navigate('/')}>
               <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <Button variant="ghost" size="icon" onClick={toggleTheme} title={theme === 'dark' ? 'Modo claro' : 'Modo escuro'}>
+              {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
             <div>
               <h1 className="text-lg font-bold text-foreground">Dashboard de Métricas</h1>

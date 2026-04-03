@@ -24,6 +24,7 @@ function mapDbLeadToLead(dbLead: DbLead, messages: ChatMessage[]): Lead {
     messages,
     createdAt: new Date(dbLead.created_at),
     updatedAt: new Date(dbLead.updated_at),
+    readUntil: (dbLead as any).read_until ? new Date((dbLead as any).read_until) : null,
   };
 }
 
@@ -42,9 +43,11 @@ export function useLeads() {
   const [loading, setLoading] = useState(true);
 
   const fetchLeads = useCallback(async () => {
-    const { data: dbLeads } = await supabase
+    const query = supabase
       .from('leads')
-      .select('*')
+      .select('*') as any;
+    const { data: dbLeads } = await query
+      .eq('archived', false)
       .order('updated_at', { ascending: false });
 
     if (!dbLeads) return;
@@ -67,7 +70,6 @@ export function useLeads() {
   useEffect(() => {
     fetchLeads();
 
-    // Realtime subscriptions
     const leadsChannel = supabase
       .channel('leads-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, () => {
@@ -102,6 +104,27 @@ export function useLeads() {
     });
   }, []);
 
+  const deleteLead = useCallback(async (leadId: string) => {
+    await supabase.from('messages').delete().eq('lead_id', leadId);
+    await supabase.from('leads').delete().eq('id', leadId);
+  }, []);
+
+  const archiveLead = useCallback(async (leadId: string) => {
+    await supabase.from('leads').update({ archived: true } as any).eq('id', leadId);
+  }, []);
+
+  const markAsRead = useCallback(async (leadId: string) => {
+    await supabase.from('leads').update({ read_until: new Date().toISOString() } as any).eq('id', leadId);
+  }, []);
+
+  const getUnreadCount = useCallback((leadId: string): number => {
+    const lead = leads.find(l => l.id === leadId);
+    if (!lead) return 0;
+    const clientMessages = lead.messages.filter(m => m.sender === 'client');
+    if (!lead.readUntil) return clientMessages.length;
+    return clientMessages.filter(m => m.timestamp > lead.readUntil!).length;
+  }, [leads]);
+
   const getLeadsByStatus = useCallback(
     (status: LeadStatus) => leads.filter((l) => l.status === status),
     [leads]
@@ -124,6 +147,10 @@ export function useLeads() {
     setSelectedLeadId,
     moveLeadToStatus,
     addMessage,
+    deleteLead,
+    archiveLead,
+    markAsRead,
+    getUnreadCount,
     getLeadsByStatus,
     stats,
     loading,

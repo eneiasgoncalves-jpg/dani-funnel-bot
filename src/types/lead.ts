@@ -28,6 +28,7 @@ export interface Lead {
   messages: ChatMessage[];
   createdAt: Date;
   updatedAt: Date;
+  readUntil: Date | null;
 }
 
 export const STATUS_CONFIG: Record<LeadStatus, { label: string; colorClass: string }> = {
