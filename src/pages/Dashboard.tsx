@@ -7,7 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts';
-import { Users, TrendingUp, DollarSign, UserX, ArrowLeft } from 'lucide-react';
+import { Users, TrendingUp, DollarSign, UserX, ArrowLeft, Sun, Moon } from 'lucide-react';
+import { useTheme } from '@/hooks/useTheme';
 import logoDani from '@/assets/logo-dani.jpg';
 import { useNavigate } from 'react-router-dom';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
