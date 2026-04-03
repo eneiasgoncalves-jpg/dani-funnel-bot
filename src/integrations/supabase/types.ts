@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       leads: {
         Row: {
+          archived: boolean
           channel: Database["public"]["Enums"]["sales_channel"]
           children_age: string | null
           children_count: number | null
@@ -28,11 +29,13 @@ export type Database = {
           name: string
           neighborhood: string | null
           phone: string
+          read_until: string | null
           status: Database["public"]["Enums"]["lead_status"]
           tags: Database["public"]["Enums"]["lead_tag"][] | null
           updated_at: string
         }
         Insert: {
+          archived?: boolean
           channel?: Database["public"]["Enums"]["sales_channel"]
           children_age?: string | null
           children_count?: number | null
@@ -45,11 +48,13 @@ export type Database = {
           name?: string
           neighborhood?: string | null
           phone: string
+          read_until?: string | null
           status?: Database["public"]["Enums"]["lead_status"]
           tags?: Database["public"]["Enums"]["lead_tag"][] | null
           updated_at?: string
         }
         Update: {
+          archived?: boolean
           channel?: Database["public"]["Enums"]["sales_channel"]
           children_age?: string | null
           children_count?: number | null
@@ -62,6 +67,7 @@ export type Database = {
           name?: string
           neighborhood?: string | null
           phone?: string
+          read_until?: string | null
           status?: Database["public"]["Enums"]["lead_status"]
           tags?: Database["public"]["Enums"]["lead_tag"][] | null
           updated_at?: string
