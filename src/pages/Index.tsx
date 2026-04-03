@@ -8,16 +8,22 @@ import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
-import { BarChart3 } from 'lucide-react';
+import { BarChart3, Sun, Moon } from 'lucide-react';
+import { useTheme } from '@/hooks/useTheme';
 import logoDani from '@/assets/logo-dani.jpg';
 
 const Index = () => {
   const navigate = useNavigate();
+  const { theme, toggleTheme } = useTheme();
   const {
     selectedLead,
     setSelectedLeadId,
     moveLeadToStatus,
     addMessage,
+    deleteLead,
+    archiveLead,
+    markAsRead,
+    getUnreadCount,
     getLeadsByStatus,
     stats,
   } = useLeads();
@@ -37,6 +43,13 @@ const Index = () => {
     fetchSetting();
   }, []);
 
+  // Mark as read when opening a lead
+  useEffect(() => {
+    if (selectedLead) {
+      markAsRead(selectedLead.id);
+    }
+  }, [selectedLead?.id]);
+
   const toggleAutoAttendance = async () => {
     setLoading(true);
     const newValue = !autoAttendance;
@@ -54,6 +67,18 @@ const Index = () => {
     setLoading(false);
   };
 
+  const handleDelete = async (leadId: string) => {
+    if (confirm('Tem certeza que deseja excluir este lead?')) {
+      await deleteLead(leadId);
+      toast.success('Lead excluído');
+    }
+  };
+
+  const handleArchive = async (leadId: string) => {
+    await archiveLead(leadId);
+    toast.success('Lead arquivado');
+  };
+
   return (
     <div className="min-h-screen bg-background relative">
       <div className="fixed inset-0 z-0 pointer-events-none flex items-center justify-center">
@@ -69,6 +94,9 @@ const Index = () => {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <Button variant="ghost" size="icon" onClick={toggleTheme} title={theme === 'dark' ? 'Modo claro' : 'Modo escuro'}>
+              {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </Button>
             <Button variant="outline" size="sm" onClick={() => navigate('/dashboard')} className="gap-2">
               <BarChart3 className="h-4 w-4" />
               Dashboard
@@ -98,6 +126,9 @@ const Index = () => {
           <KanbanBoard
             getLeadsByStatus={getLeadsByStatus}
             onLeadClick={setSelectedLeadId}
+            getUnreadCount={getUnreadCount}
+            onDeleteLead={handleDelete}
+            onArchiveLead={handleArchive}
           />
         </div>
       </main>
