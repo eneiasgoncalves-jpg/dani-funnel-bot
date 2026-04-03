@@ -43,10 +43,11 @@ export function useLeads() {
   const [loading, setLoading] = useState(true);
 
   const fetchLeads = useCallback(async () => {
-    const { data: dbLeads } = await supabase
+    const query = supabase
       .from('leads')
-      .select('*')
-      .eq('archived' as any, false)
+      .select('*') as any;
+    const { data: dbLeads } = await query
+      .eq('archived', false)
       .order('updated_at', { ascending: false });
 
     if (!dbLeads) return;
