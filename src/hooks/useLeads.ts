@@ -46,7 +46,7 @@ export function useLeads() {
     const { data: dbLeads } = await supabase
       .from('leads')
       .select('*')
-      .eq('archived', false)
+      .eq('archived' as any, false)
       .order('updated_at', { ascending: false });
 
     if (!dbLeads) return;
