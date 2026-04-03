@@ -48,6 +48,7 @@ const monthOptions = () => {
 };
 
 export default function Dashboard() {
+  const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const [leads, setLeads] = useState<LeadAnalytics[]>([]);
   const [allLeads, setAllLeads] = useState<LeadAnalytics[]>([]);
