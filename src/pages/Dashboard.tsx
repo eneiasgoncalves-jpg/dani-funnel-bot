@@ -152,6 +152,10 @@ export default function Dashboard() {
             <Button variant="ghost" size="icon" onClick={() => navigate('/')}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
+            <Button variant="ghost" size="icon" onClick={toggleTheme} title={theme === 'dark' ? 'Modo claro' : 'Modo escuro'}>
+              {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </Button>
+            </Button>
             <div>
               <h1 className="text-lg font-bold text-foreground">Dashboard de Métricas</h1>
               <p className="text-[11px] text-muted-foreground">Dani Locações • Análise de Performance</p>
