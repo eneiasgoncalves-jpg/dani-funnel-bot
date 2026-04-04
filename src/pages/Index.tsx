@@ -11,6 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import { BarChart3, Sun, Moon } from 'lucide-react';
 import { useTheme } from '@/hooks/useTheme';
 import logoDani from '@/assets/logo-dani.jpg';
+import { AddLeadDialog } from '@/components/AddLeadDialog';
 
 const Index = () => {
   const navigate = useNavigate();
@@ -101,6 +102,7 @@ const Index = () => {
               <BarChart3 className="h-4 w-4" />
               Dashboard
             </Button>
+            <AddLeadDialog />
             <div className="flex items-center gap-2">
               <Switch
                 checked={autoAttendance}
