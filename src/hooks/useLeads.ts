@@ -97,12 +97,27 @@ export function useLeads() {
   }, []);
 
   const addMessage = useCallback(async (leadId: string, message: Omit<ChatMessage, 'id' | 'timestamp'>) => {
-    await supabase.from('messages').insert({
-      lead_id: leadId,
-      sender: message.sender,
-      text: message.text,
-    });
-  }, []);
+    const lead = leads.find(l => l.id === leadId);
+    const isWhatsApp = lead?.channel === 'whatsapp';
+
+    if (isWhatsApp && message.sender === 'ai') {
+      // Send via Evolution API (edge function saves to DB too)
+      const { error } = await supabase.functions.invoke('send-whatsapp', {
+        body: { leadId, text: message.text },
+      });
+      if (error) {
+        console.error('Failed to send WhatsApp message:', error);
+        throw error;
+      }
+    } else {
+      // Non-WhatsApp or client message: just save to DB
+      await supabase.from('messages').insert({
+        lead_id: leadId,
+        sender: message.sender,
+        text: message.text,
+      });
+    }
+  }, [leads]);
 
   const deleteLead = useCallback(async (leadId: string) => {
     await supabase.from('messages').delete().eq('lead_id', leadId);
