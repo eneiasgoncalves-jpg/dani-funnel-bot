@@ -215,7 +215,7 @@ async function buildAiReply(
     throw new Error(`Erro ao buscar histórico: ${historyError.message}`);
   }
 
-  const messages = (history || []).map((message) => ({
+  const messages = (history || []).map((message: { sender: string; text: string }) => ({
     role: message.sender === "client" ? "user" : "assistant",
     content: message.text,
   }));
