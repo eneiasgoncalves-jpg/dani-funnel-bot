@@ -118,7 +118,7 @@ function normalizeLeadPhone(phone: string): string[] {
   return Array.from(new Set([withPlus, digits]));
 }
 
-async function findOrCreateLead(supabase: ReturnType<typeof createClient>, phone: string, pushName: string) {
+async function findOrCreateLead(supabase: any, phone: string, pushName: string) {
   const phoneVariants = normalizeLeadPhone(phone);
 
   const { data: existingLead, error: lookupError } = await supabase
@@ -168,7 +168,7 @@ async function findOrCreateLead(supabase: ReturnType<typeof createClient>, phone
 }
 
 async function saveMessage(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   leadId: string,
   sender: "client" | "ai",
   text: string,
@@ -184,7 +184,7 @@ async function saveMessage(
   }
 }
 
-async function getAutoAttendanceEnabled(supabase: ReturnType<typeof createClient>) {
+async function getAutoAttendanceEnabled(supabase: any) {
   const { data, error } = await supabase
     .from("settings")
     .select("value")
@@ -199,7 +199,7 @@ async function getAutoAttendanceEnabled(supabase: ReturnType<typeof createClient
 }
 
 async function buildAiReply(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   lead: LeadRow,
   phone: string,
   lovableApiKey: string,
