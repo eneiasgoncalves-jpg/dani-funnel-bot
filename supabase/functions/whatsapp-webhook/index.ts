@@ -1,12 +1,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 const AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
+const TRANSFERRED_STATUSES = ["analise", "proposta", "contra_proposta", "fechado", "perdido"] as const;
 
 const SYSTEM_PROMPT = `Você é a assistente virtual da Dani Locações, empresa de locação de brinquedos para festas e eventos no Rio Grande do Sul.
 
@@ -46,22 +47,305 @@ REGRAS:
 - Responda APENAS com texto puro. Sem markdown, sem asteriscos, sem bullet points.
 - Se o cliente já foi transferido para humano (status em_analise ou posterior), NÃO responda mais.`;
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+type JsonRecord = Record<string, unknown>;
+type LeadRow = {
+  id: string;
+  name: string;
+  phone: string;
+  event_date: string | null;
+  city: string | null;
+  neighborhood: string | null;
+  children_age: string | null;
+  children_count: number | null;
+  interest: string | null;
+  status: string;
+  tags: string[] | null;
+};
+
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+function asRecord(value: unknown): JsonRecord {
+  return value && typeof value === "object" ? (value as JsonRecord) : {};
+}
+
+function getString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function extractMessageText(message: JsonRecord): string {
+  const directText = [
+    message.conversation,
+    asRecord(message.extendedTextMessage).text,
+    asRecord(message.imageMessage).caption,
+    asRecord(message.videoMessage).caption,
+    asRecord(message.documentMessage).caption,
+    asRecord(message.buttonsResponseMessage).selectedDisplayText,
+    asRecord(message.listResponseMessage).title,
+    asRecord(message.templateButtonReplyMessage).selectedDisplayText,
+  ];
+
+  for (const candidate of directText) {
+    const text = getString(candidate);
+    if (text) return text;
   }
 
-  const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-  const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  return "";
+}
+
+function normalizeRemoteJid(rawJid: string, sender: string): string {
+  if (rawJid.includes("@lid")) {
+    return getString(sender);
+  }
+
+  return rawJid;
+}
+
+function extractPhoneFromJid(jid: string): string {
+  const digits = jid.replace(/@.+$/, "").replace(/\D/g, "");
+  return digits ? `+${digits}` : "";
+}
+
+function normalizeLeadPhone(phone: string): string[] {
+  const digits = phone.replace(/\D/g, "");
+  if (!digits) return [];
+
+  const withPlus = `+${digits}`;
+  return Array.from(new Set([withPlus, digits]));
+}
+
+async function findOrCreateLead(supabase: ReturnType<typeof createClient>, phone: string, pushName: string) {
+  const phoneVariants = normalizeLeadPhone(phone);
+
+  const { data: existingLead, error: lookupError } = await supabase
+    .from("leads")
+    .select("*")
+    .in("phone", phoneVariants)
+    .limit(1)
+    .maybeSingle();
+
+  if (lookupError) {
+    throw new Error(`Erro ao buscar lead: ${lookupError.message}`);
+  }
+
+  if (existingLead) {
+    const updates: JsonRecord = {};
+    if (pushName && !existingLead.name) updates.name = pushName;
+    if (existingLead.phone !== phone) updates.phone = phone;
+
+    if (Object.keys(updates).length > 0) {
+      const { error: updateError } = await supabase.from("leads").update(updates).eq("id", existingLead.id);
+      if (updateError) {
+        throw new Error(`Erro ao atualizar lead: ${updateError.message}`);
+      }
+      return { ...existingLead, ...updates } as LeadRow;
+    }
+
+    return existingLead as LeadRow;
+  }
+
+  const { data: newLead, error: insertError } = await supabase
+    .from("leads")
+    .insert({
+      phone,
+      name: pushName || phone,
+      channel: "whatsapp",
+      status: "novo",
+      tags: [],
+    })
+    .select("*")
+    .single();
+
+  if (insertError || !newLead) {
+    throw new Error(`Erro ao criar lead: ${insertError?.message ?? "Lead não criado"}`);
+  }
+
+  return newLead as LeadRow;
+}
+
+async function saveMessage(
+  supabase: ReturnType<typeof createClient>,
+  leadId: string,
+  sender: "client" | "ai",
+  text: string,
+) {
+  const { error } = await supabase.from("messages").insert({
+    lead_id: leadId,
+    sender,
+    text,
+  });
+
+  if (error) {
+    throw new Error(`Erro ao salvar mensagem (${sender}): ${error.message}`);
+  }
+}
+
+async function getAutoAttendanceEnabled(supabase: ReturnType<typeof createClient>) {
+  const { data, error } = await supabase
+    .from("settings")
+    .select("value")
+    .eq("key", "auto_attendance")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Erro ao buscar configuração de atendimento automático: ${error.message}`);
+  }
+
+  return data?.value === true;
+}
+
+async function buildAiReply(
+  supabase: ReturnType<typeof createClient>,
+  lead: LeadRow,
+  phone: string,
+  lovableApiKey: string,
+) {
+  const { data: history, error: historyError } = await supabase
+    .from("messages")
+    .select("sender, text")
+    .eq("lead_id", lead.id)
+    .order("created_at", { ascending: true })
+    .limit(20);
+
+  if (historyError) {
+    throw new Error(`Erro ao buscar histórico: ${historyError.message}`);
+  }
+
+  const messages = (history || []).map((message) => ({
+    role: message.sender === "client" ? "user" : "assistant",
+    content: message.text,
+  }));
+
+  const context = `Contexto do lead: Nome: ${lead.name || "não informado"}, Telefone: ${phone}, Data do evento: ${lead.event_date || "não informada"}, Cidade: ${lead.city || "não informada"}, Bairro: ${lead.neighborhood || "não informado"}, Idade das crianças: ${lead.children_age || "não informada"}, Qtd crianças: ${lead.children_count || "não informada"}, Interesse: ${lead.interest || "não informado"}, Status: ${lead.status}`;
+
+  const aiResponse = await fetch(AI_GATEWAY_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${lovableApiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "google/gemini-3-flash-preview",
+      messages: [
+        { role: "system", content: `${SYSTEM_PROMPT}\n\n${context}` },
+        ...messages,
+      ],
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "update_lead",
+            description: "Update lead info extracted from conversation",
+            parameters: {
+              type: "object",
+              properties: {
+                name: { type: "string" },
+                event_date: { type: "string", description: "YYYY-MM-DD format" },
+                city: { type: "string" },
+                neighborhood: { type: "string" },
+                children_age: { type: "string" },
+                children_count: { type: "number" },
+                interest: { type: "string" },
+                new_status: { type: "string", enum: ["novo", "analise", "proposta", "contra_proposta", "fechado", "perdido"] },
+                tags: { type: "array", items: { type: "string", enum: ["quente", "duvida", "sensivel_preco", "frio"] } },
+              },
+            },
+          },
+        },
+      ],
+    }),
+  });
+
+  if (!aiResponse.ok) {
+    const errorText = await aiResponse.text();
+    throw new Error(`AI gateway error [${aiResponse.status}]: ${errorText}`);
+  }
+
+  const aiData = await aiResponse.json();
+  const choice = aiData.choices?.[0];
+  let replyText = getString(choice?.message?.content) || "Desculpe, tive um problema. Pode repetir? 😊";
+
+  if (choice?.message?.tool_calls) {
+    for (const toolCall of choice.message.tool_calls) {
+      if (toolCall.function?.name !== "update_lead") continue;
+
+      try {
+        const updates = JSON.parse(toolCall.function.arguments);
+        const leadUpdate: JsonRecord = {};
+        if (getString(updates.name)) leadUpdate.name = getString(updates.name);
+        if (getString(updates.event_date)) leadUpdate.event_date = getString(updates.event_date);
+        if (getString(updates.city)) leadUpdate.city = getString(updates.city);
+        if (getString(updates.neighborhood)) leadUpdate.neighborhood = getString(updates.neighborhood);
+        if (getString(updates.children_age)) leadUpdate.children_age = getString(updates.children_age);
+        if (typeof updates.children_count === "number") leadUpdate.children_count = updates.children_count;
+        if (getString(updates.interest)) leadUpdate.interest = getString(updates.interest);
+        if (getString(updates.new_status)) leadUpdate.status = getString(updates.new_status);
+        if (Array.isArray(updates.tags)) leadUpdate.tags = updates.tags;
+
+        if (Object.keys(leadUpdate).length > 0) {
+          const { error: updateError } = await supabase.from("leads").update(leadUpdate).eq("id", lead.id);
+          if (updateError) {
+            throw new Error(updateError.message);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to parse/update lead from tool call:", error);
+      }
+    }
+  }
+
+  const transferToHuman = replyText.includes("[TRANSFER_TO_HUMAN]");
+  if (transferToHuman) {
+    replyText = replyText.replace("[TRANSFER_TO_HUMAN]", "").trim();
+    const { error: updateError } = await supabase.from("leads").update({ status: "analise" }).eq("id", lead.id);
+    if (updateError) {
+      throw new Error(`Erro ao transferir lead para humano: ${updateError.message}`);
+    }
+  }
+
+  return replyText;
+}
+
+async function sendWhatsappReply(remoteJid: string, text: string, url: string, apiKey: string, instanceName: string) {
+  const response = await fetch(`${url}/message/sendText/${instanceName}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: apiKey,
+    },
+    body: JSON.stringify({
+      number: remoteJid,
+      textMessage: { text },
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Evolution API error [${response.status}]: ${errorText}`);
+  }
+
+  return response.json();
+}
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
+  const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+  const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   const EVOLUTION_API_URL = Deno.env.get("EVOLUTION_API_URL");
   const EVOLUTION_API_KEY = Deno.env.get("EVOLUTION_API_KEY");
   const EVOLUTION_INSTANCE_NAME = Deno.env.get("EVOLUTION_INSTANCE_NAME");
 
-  if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
-  if (!EVOLUTION_API_URL) throw new Error("EVOLUTION_API_URL is not configured");
-  if (!EVOLUTION_API_KEY) throw new Error("EVOLUTION_API_KEY is not configured");
-  if (!EVOLUTION_INSTANCE_NAME) throw new Error("EVOLUTION_INSTANCE_NAME is not configured");
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !LOVABLE_API_KEY || !EVOLUTION_API_URL || !EVOLUTION_API_KEY || !EVOLUTION_INSTANCE_NAME) {
+    return jsonResponse({ error: "Missing required environment variables" }, 500);
+  }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -69,259 +353,53 @@ serve(async (req) => {
     const payload = await req.json();
     console.log("Evolution webhook payload:", JSON.stringify(payload));
 
-    const senderFromPayload = payload.sender || ""; 
-
-    const event = payload.event;
-    
+    const event = getString(payload?.event);
     if (event !== "messages.upsert") {
-      console.log("Ignoring event:", event);
-      return new Response(JSON.stringify({ status: "ignored", event }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse({ status: "ignored", event });
     }
 
-    const data = payload.data;
-    if (!data) {
-      return new Response(JSON.stringify({ status: "no data" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    const data = asRecord(payload?.data);
+    const message = asRecord(data.message);
+    const key = asRecord(data.key);
+    const senderFromPayload = getString(payload?.sender);
+    const rawRemoteJid = getString(key.remoteJid);
+    const remoteJid = normalizeRemoteJid(rawRemoteJid, senderFromPayload);
+    const phone = extractPhoneFromJid(remoteJid);
+    const pushName = getString(data.pushName);
+    const messageText = extractMessageText(message);
+
+    if (key.fromMe === true) {
+      return jsonResponse({ status: "skipped_own" });
     }
 
-    if (data.key?.fromMe) {
-      console.log("Skipping own message");
-      return new Response(JSON.stringify({ status: "skipped_own" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    if (!phone) {
+      return jsonResponse({ status: "ignored", reason: "sender_not_found" }, 400);
     }
 
-    const { data: setting } = await supabase
-      .from("settings")
-      .select("value")
-      .eq("key", "auto_attendance")
-      .single();
-
-    if (!setting || setting.value !== true) {
-      console.log("Auto attendance is disabled, saving message only");
-      
-      const rawJid = data.key?.remoteJid || "";
-      const realSender = rawJid.includes("@lid") ? senderFromPayload : rawJid;
-      const phone = "+" + realSender.replace("@s.whatsapp.net", "").replace("@g.us", "");
-      const messageText = data.message?.conversation || data.message?.extendedTextMessage?.text || "";
-      const pushName = data.pushName || "";
-      
-      if (messageText) {
-        let { data: lead } = await supabase.from("leads").select("*").eq("phone", phone).single();
-        if (!lead) {
-          const { data: newLead } = await supabase.from("leads")
-            .insert({ phone, name: pushName || "", channel: "whatsapp", status: "novo", tags: [] })
-            .select().single();
-          lead = newLead;
-        }
-        if (lead) {
-          await supabase.from("messages").insert({ lead_id: lead.id, sender: "client", text: messageText });
-        }
-      }
-
-      return new Response(JSON.stringify({ status: "auto_attendance_disabled" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const messageText = data.message?.conversation 
-      || data.message?.extendedTextMessage?.text
-      || "";
-    
     if (!messageText) {
-      console.log("No text in message, skipping");
-      return new Response(JSON.stringify({ status: "no_text" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      const leadWithoutMessage = await findOrCreateLead(supabase, phone, pushName);
+      return jsonResponse({ status: "lead_saved_without_text", leadId: leadWithoutMessage.id });
     }
 
-    const rawRemoteJid = data.key?.remoteJid || "";
-    const isLidFormat = rawRemoteJid.includes("@lid");
-    const realJid = isLidFormat ? senderFromPayload : rawRemoteJid;
-    const remoteJid = isLidFormat ? senderFromPayload : rawRemoteJid;
-    const phone = "+" + realJid.replace("@s.whatsapp.net", "").replace("@g.us", "");
-    const pushName = data.pushName || "";
+    const lead = await findOrCreateLead(supabase, phone, pushName);
+    await saveMessage(supabase, lead.id, "client", messageText);
 
-    console.log(`Message from ${phone} (${pushName}): ${messageText}`);
-
-    let { data: lead } = await supabase
-      .from("leads")
-      .select("*")
-      .eq("phone", phone)
-      .single();
-
-    if (!lead) {
-      const { data: newLead, error: insertErr } = await supabase
-        .from("leads")
-        .insert({ 
-          phone, 
-          name: pushName || "", 
-          channel: "whatsapp", 
-          status: "novo", 
-          tags: [] 
-        })
-        .select()
-        .single();
-
-      if (insertErr) throw new Error(`Failed to create lead: ${insertErr.message}`);
-      lead = newLead;
-    } else if (pushName && !lead.name) {
-      await supabase.from("leads").update({ name: pushName }).eq("id", lead.id);
-      lead.name = pushName;
+    const autoAttendanceEnabled = await getAutoAttendanceEnabled(supabase);
+    if (!autoAttendanceEnabled) {
+      return jsonResponse({ status: "saved_only", leadId: lead.id });
     }
 
-    await supabase.from("messages").insert({
-      lead_id: lead.id,
-      sender: "client",
-      text: messageText,
-    });
-
-    const transferredStatuses = ["analise", "proposta", "contra_proposta", "fechado", "perdido"];
-    if (transferredStatuses.includes(lead.status)) {
-      console.log(`Lead ${lead.id} already transferred (status: ${lead.status}), skipping AI`);
-      return new Response(JSON.stringify({ status: "already_transferred" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    if (TRANSFERRED_STATUSES.includes(lead.status as typeof TRANSFERRED_STATUSES[number])) {
+      return jsonResponse({ status: "already_transferred", leadId: lead.id });
     }
 
-    const { data: history } = await supabase
-      .from("messages")
-      .select("sender, text")
-      .eq("lead_id", lead.id)
-      .order("created_at", { ascending: true })
-      .limit(20);
+    const replyText = await buildAiReply(supabase, lead, phone, LOVABLE_API_KEY);
+    await saveMessage(supabase, lead.id, "ai", replyText);
+    await sendWhatsappReply(remoteJid, replyText, EVOLUTION_API_URL, EVOLUTION_API_KEY, EVOLUTION_INSTANCE_NAME);
 
-    const messages = (history || []).map((m) => ({
-      role: m.sender === "client" ? "user" : "assistant",
-      content: m.text,
-    }));
-
-    const context = `Contexto do lead: Nome: ${lead.name || "não informado"}, Telefone: ${phone}, Data do evento: ${lead.event_date || "não informada"}, Cidade: ${lead.city || "não informada"}, Bairro: ${lead.neighborhood || "não informado"}, Idade das crianças: ${lead.children_age || "não informada"}, Qtd crianças: ${lead.children_count || "não informada"}, Interesse: ${lead.interest || "não informado"}, Status: ${lead.status}`;
-
-    const aiResponse = await fetch(AI_GATEWAY_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT + "\n\n" + context },
-          ...messages,
-        ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "update_lead",
-              description: "Update lead info extracted from conversation",
-              parameters: {
-                type: "object",
-                properties: {
-                  name: { type: "string" },
-                  event_date: { type: "string", description: "YYYY-MM-DD format" },
-                  city: { type: "string" },
-                  neighborhood: { type: "string" },
-                  children_age: { type: "string" },
-                  children_count: { type: "number" },
-                  interest: { type: "string" },
-                  new_status: { type: "string", enum: ["novo", "analise", "proposta", "contra_proposta", "fechado", "perdido"] },
-                  tags: { type: "array", items: { type: "string", enum: ["quente", "duvida", "sensivel_preco", "frio"] } },
-                },
-              },
-            },
-          },
-        ],
-      }),
-    });
-
-    if (!aiResponse.ok) {
-      const errText = await aiResponse.text();
-      console.error("AI error:", aiResponse.status, errText);
-      throw new Error(`AI gateway error [${aiResponse.status}]: ${errText}`);
-    }
-
-    const aiData = await aiResponse.json();
-    const choice = aiData.choices?.[0];
-    let replyText = choice?.message?.content || "Desculpe, tive um problema. Pode repetir? 😊";
-
-    if (choice?.message?.tool_calls) {
-      for (const tc of choice.message.tool_calls) {
-        if (tc.function?.name === "update_lead") {
-          try {
-            const updates = JSON.parse(tc.function.arguments);
-            const leadUpdate: Record<string, unknown> = {};
-            if (updates.name) leadUpdate.name = updates.name;
-            if (updates.event_date) leadUpdate.event_date = updates.event_date;
-            if (updates.city) leadUpdate.city = updates.city;
-            if (updates.neighborhood) leadUpdate.neighborhood = updates.neighborhood;
-            if (updates.children_age) leadUpdate.children_age = updates.children_age;
-            if (updates.children_count) leadUpdate.children_count = updates.children_count;
-            if (updates.interest) leadUpdate.interest = updates.interest;
-            if (updates.new_status) leadUpdate.status = updates.new_status;
-            if (updates.tags) leadUpdate.tags = updates.tags;
-
-            if (Object.keys(leadUpdate).length > 0) {
-              await supabase.from("leads").update(leadUpdate).eq("id", lead.id);
-              console.log("Lead updated:", leadUpdate);
-            }
-          } catch (e) {
-            console.error("Failed to parse tool call:", e);
-          }
-        }
-      }
-    }
-
-    const isTransfer = replyText.includes("[TRANSFER_TO_HUMAN]");
-    if (isTransfer) {
-      replyText = replyText.replace("[TRANSFER_TO_HUMAN]", "").trim();
-      await supabase.from("leads").update({ status: "analise" }).eq("id", lead.id);
-      console.log(`Lead ${lead.id} transferred to human, status changed to analise`);
-    }
-
-    await supabase.from("messages").insert({
-      lead_id: lead.id,
-      sender: "ai",
-      text: replyText,
-    });
-
-    const evolutionUrl = `${EVOLUTION_API_URL}/message/sendText/${EVOLUTION_INSTANCE_NAME}`;
-    console.log("Sending to Evolution:", evolutionUrl);
-
-    const evolutionResponse = await fetch(evolutionUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: EVOLUTION_API_KEY,
-      },
-      body: JSON.stringify({
-        number: remoteJid,
-        textMessage: { text: replyText },
-      }),
-    });
-
-    if (!evolutionResponse.ok) {
-      const evoErr = await evolutionResponse.text();
-      console.error("Evolution API error:", evolutionResponse.status, evoErr);
-    } else {
-      const evoData = await evolutionResponse.json();
-      console.log("Message sent via Evolution:", JSON.stringify(evoData));
-    }
-
-    return new Response(JSON.stringify({ status: "ok" }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse({ status: "ok", leadId: lead.id, reply: replyText });
   } catch (error) {
     console.error("Webhook error:", error);
-    const msg = error instanceof Error ? error.message : "Unknown error";
-    return new Response(JSON.stringify({ status: "error", message: msg }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse({ status: "error", message: error instanceof Error ? error.message : "Unknown error" }, 500);
   }
 });
