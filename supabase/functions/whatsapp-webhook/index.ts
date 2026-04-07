@@ -62,6 +62,15 @@ type LeadRow = {
   tags: string[] | null;
 };
 
+type IncomingMessage = {
+  messageId: string;
+  remoteJid: string;
+  phone: string;
+  pushName: string;
+  text: string;
+  fromMe: boolean;
+};
+
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -73,25 +82,78 @@ function asRecord(value: unknown): JsonRecord {
   return value && typeof value === "object" ? (value as JsonRecord) : {};
 }
 
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
 function getString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function extractMessageText(message: JsonRecord): string {
+function normalizeEventName(value: string): string {
+  return value.trim().toLowerCase().replace(/_/g, ".");
+}
+
+function unwrapMessageContainer(message: JsonRecord): JsonRecord {
+  const wrapperKeys = [
+    "ephemeralMessage",
+    "viewOnceMessage",
+    "viewOnceMessageV2",
+    "viewOnceMessageV2Extension",
+    "documentWithCaptionMessage",
+  ];
+
+  for (const key of wrapperKeys) {
+    const nested = asRecord(message[key]);
+    const nestedMessage = asRecord(nested.message);
+    if (Object.keys(nestedMessage).length > 0) {
+      return unwrapMessageContainer(nestedMessage);
+    }
+  }
+
+  return message;
+}
+
+function extractMessageText(rawMessage: JsonRecord): string {
+  const message = unwrapMessageContainer(rawMessage);
+  const interactiveResponse = asRecord(message.interactiveResponseMessage);
+  const listResponse = asRecord(message.listResponseMessage);
+  const templateMessage = asRecord(message.templateMessage);
+  const hydratedTemplate = asRecord(templateMessage.hydratedTemplate);
+  const buttonsResponse = asRecord(message.buttonsResponseMessage);
+  const templateButtonReply = asRecord(message.templateButtonReplyMessage);
+
   const directText = [
     message.conversation,
     asRecord(message.extendedTextMessage).text,
     asRecord(message.imageMessage).caption,
     asRecord(message.videoMessage).caption,
     asRecord(message.documentMessage).caption,
-    asRecord(message.buttonsResponseMessage).selectedDisplayText,
-    asRecord(message.listResponseMessage).title,
-    asRecord(message.templateButtonReplyMessage).selectedDisplayText,
+    buttonsResponse.selectedDisplayText,
+    buttonsResponse.selectedButtonId,
+    listResponse.title,
+    asRecord(listResponse.singleSelectReply).selectedRowId,
+    templateButtonReply.selectedDisplayText,
+    templateButtonReply.selectedId,
+    asRecord(message.buttonsMessage).contentText,
+    hydratedTemplate.hydratedContentText,
+    asRecord(interactiveResponse.body).text,
   ];
 
   for (const candidate of directText) {
     const text = getString(candidate);
     if (text) return text;
+  }
+
+  const paramsJson = getString(asRecord(interactiveResponse.nativeFlowResponseMessage).paramsJson);
+  if (paramsJson) {
+    try {
+      const parsed = JSON.parse(paramsJson);
+      const selectedText = getString(parsed?.title) || getString(parsed?.id);
+      if (selectedText) return selectedText;
+    } catch {
+      // ignore invalid JSON
+    }
   }
 
   return "";
@@ -116,6 +178,67 @@ function normalizeLeadPhone(phone: string): string[] {
 
   const withPlus = `+${digits}`;
   return Array.from(new Set([withPlus, digits]));
+}
+
+function buildMessageCandidates(payload: JsonRecord): JsonRecord[] {
+  const data = payload.data;
+  if (Array.isArray(data)) {
+    return data.map(asRecord);
+  }
+
+  const dataRecord = asRecord(data);
+  const nestedMessages = asArray(dataRecord.messages).map(asRecord);
+
+  if (nestedMessages.length > 0) {
+    return nestedMessages.map((messageItem) => ({
+      ...dataRecord,
+      ...messageItem,
+      key: { ...asRecord(dataRecord.key), ...asRecord(messageItem.key) },
+      message: Object.keys(asRecord(messageItem.message)).length > 0
+        ? asRecord(messageItem.message)
+        : asRecord(dataRecord.message),
+      pushName: getString(messageItem.pushName) || getString(dataRecord.pushName) || getString(payload.pushName),
+      sender: getString(messageItem.sender) || getString(dataRecord.sender) || getString(payload.sender),
+    }));
+  }
+
+  return [dataRecord];
+}
+
+function extractIncomingMessages(payload: JsonRecord): IncomingMessage[] {
+  const dataRecord = asRecord(payload.data);
+
+  return buildMessageCandidates(payload)
+    .map((candidate) => {
+      const key = asRecord(candidate.key);
+      const senderCandidate =
+        getString(candidate.sender) ||
+        getString(dataRecord.sender) ||
+        getString(payload.sender) ||
+        getString(key.participant);
+      const rawRemoteJid =
+        getString(key.remoteJid) ||
+        getString(candidate.remoteJid) ||
+        senderCandidate;
+      const remoteJid = normalizeRemoteJid(rawRemoteJid, senderCandidate);
+      const phone = extractPhoneFromJid(remoteJid);
+      const messageText = extractMessageText(asRecord(candidate.message));
+      const pushName =
+        getString(candidate.pushName) ||
+        getString(dataRecord.pushName) ||
+        getString(payload.pushName) ||
+        phone;
+
+      return {
+        messageId: getString(key.id) || crypto.randomUUID(),
+        remoteJid,
+        phone,
+        pushName,
+        text: messageText,
+        fromMe: key.fromMe === true || candidate.fromMe === true,
+      } satisfies IncomingMessage;
+    })
+    .filter((message) => Boolean(message.remoteJid) && !message.remoteJid.endsWith("@g.us") && !message.remoteJid.includes("broadcast"));
 }
 
 async function findOrCreateLead(supabase: any, phone: string, pushName: string) {
@@ -331,6 +454,48 @@ async function sendWhatsappReply(remoteJid: string, text: string, url: string, a
   return response.json();
 }
 
+async function processIncomingMessage(params: {
+  supabase: any;
+  incoming: IncomingMessage;
+  lovableApiKey: string;
+  evolutionApiUrl: string;
+  evolutionApiKey: string;
+  evolutionInstanceName: string;
+}) {
+  const { supabase, incoming, lovableApiKey, evolutionApiUrl, evolutionApiKey, evolutionInstanceName } = params;
+
+  if (incoming.fromMe) {
+    return { status: "skipped_own", messageId: incoming.messageId };
+  }
+
+  if (!incoming.phone) {
+    return { status: "ignored", reason: "sender_not_found", messageId: incoming.messageId };
+  }
+
+  const lead = await findOrCreateLead(supabase, incoming.phone, incoming.pushName);
+
+  if (!incoming.text) {
+    return { status: "lead_saved_without_text", leadId: lead.id, messageId: incoming.messageId };
+  }
+
+  await saveMessage(supabase, lead.id, "client", incoming.text);
+
+  const autoAttendanceEnabled = await getAutoAttendanceEnabled(supabase);
+  if (!autoAttendanceEnabled) {
+    return { status: "saved_only", leadId: lead.id, messageId: incoming.messageId };
+  }
+
+  if (TRANSFERRED_STATUSES.includes(lead.status as typeof TRANSFERRED_STATUSES[number])) {
+    return { status: "already_transferred", leadId: lead.id, messageId: incoming.messageId };
+  }
+
+  const replyText = await buildAiReply(supabase, lead, incoming.phone, lovableApiKey);
+  await saveMessage(supabase, lead.id, "ai", replyText);
+  await sendWhatsappReply(incoming.remoteJid, replyText, evolutionApiUrl, evolutionApiKey, evolutionInstanceName);
+
+  return { status: "ok", leadId: lead.id, reply: replyText, messageId: incoming.messageId };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -350,54 +515,61 @@ serve(async (req) => {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
-    const payload = await req.json();
+    const payload = asRecord(await req.json());
     console.log("Evolution webhook payload:", JSON.stringify(payload));
 
-    const event = getString(payload?.event);
+    const event = normalizeEventName(getString(payload.event) || getString(payload.type));
     if (event !== "messages.upsert") {
       return jsonResponse({ status: "ignored", event });
     }
 
-    const data = asRecord(payload?.data);
-    const message = asRecord(data.message);
-    const key = asRecord(data.key);
-    const senderFromPayload = getString(payload?.sender);
-    const rawRemoteJid = getString(key.remoteJid);
-    const remoteJid = normalizeRemoteJid(rawRemoteJid, senderFromPayload);
-    const phone = extractPhoneFromJid(remoteJid);
-    const pushName = getString(data.pushName);
-    const messageText = extractMessageText(message);
-
-    if (key.fromMe === true) {
-      return jsonResponse({ status: "skipped_own" });
+    const incomingMessages = extractIncomingMessages(payload);
+    if (!incomingMessages.length) {
+      return jsonResponse({ status: "ignored", reason: "no_supported_messages" });
     }
 
-    if (!phone) {
-      return jsonResponse({ status: "ignored", reason: "sender_not_found" }, 400);
+    const processAll = Promise.allSettled(
+      incomingMessages.map(async (incoming) => {
+        try {
+          return await processIncomingMessage({
+            supabase,
+            incoming,
+            lovableApiKey: LOVABLE_API_KEY,
+            evolutionApiUrl: EVOLUTION_API_URL,
+            evolutionApiKey: EVOLUTION_API_KEY,
+            evolutionInstanceName: EVOLUTION_INSTANCE_NAME,
+          });
+        } catch (error) {
+          console.error(`Failed to process incoming message ${incoming.messageId}:`, error);
+          throw error;
+        }
+      }),
+    );
+
+    const edgeRuntime = (globalThis as any).EdgeRuntime;
+    const waitUntil = typeof edgeRuntime?.waitUntil === "function"
+      ? edgeRuntime.waitUntil.bind(edgeRuntime)
+      : null;
+
+    if (waitUntil) {
+      waitUntil(processAll);
+      return jsonResponse({ status: "accepted", received: incomingMessages.length });
     }
 
-    if (!messageText) {
-      const leadWithoutMessage = await findOrCreateLead(supabase, phone, pushName);
-      return jsonResponse({ status: "lead_saved_without_text", leadId: leadWithoutMessage.id });
-    }
+    const results = await processAll;
+    const processed = results.filter((result) => result.status === "fulfilled").length;
+    const failed = results
+      .filter((result) => result.status === "rejected")
+      .map((result) => result.status === "rejected" ? String(result.reason) : "");
 
-    const lead = await findOrCreateLead(supabase, phone, pushName);
-    await saveMessage(supabase, lead.id, "client", messageText);
-
-    const autoAttendanceEnabled = await getAutoAttendanceEnabled(supabase);
-    if (!autoAttendanceEnabled) {
-      return jsonResponse({ status: "saved_only", leadId: lead.id });
-    }
-
-    if (TRANSFERRED_STATUSES.includes(lead.status as typeof TRANSFERRED_STATUSES[number])) {
-      return jsonResponse({ status: "already_transferred", leadId: lead.id });
-    }
-
-    const replyText = await buildAiReply(supabase, lead, phone, LOVABLE_API_KEY);
-    await saveMessage(supabase, lead.id, "ai", replyText);
-    await sendWhatsappReply(remoteJid, replyText, EVOLUTION_API_URL, EVOLUTION_API_KEY, EVOLUTION_INSTANCE_NAME);
-
-    return jsonResponse({ status: "ok", leadId: lead.id, reply: replyText });
+    return jsonResponse(
+      {
+        status: failed.length > 0 ? "partial" : "ok",
+        processed,
+        failed,
+      },
+      failed.length > 0 ? 207 : 200,
+    );
   } catch (error) {
     console.error("Webhook error:", error);
     return jsonResponse({ status: "error", message: error instanceof Error ? error.message : "Unknown error" }, 500);
