@@ -3,8 +3,13 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
+
+function formatWhatsappJid(phone: string) {
+  const digits = phone.replace(/\D/g, "");
+  return `${digits}@s.whatsapp.net`;
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -36,7 +41,6 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Get lead phone
     const { data: lead, error: leadErr } = await supabase
       .from("leads")
       .select("phone")
@@ -50,11 +54,7 @@ serve(async (req) => {
       });
     }
 
-    // Format phone to WhatsApp JID
-    const phone = lead.phone.replace("+", "");
-    const remoteJid = `${phone}@s.whatsapp.net`;
-
-    // Send via Evolution API
+    const remoteJid = formatWhatsappJid(lead.phone);
     const evolutionUrl = `${EVOLUTION_API_URL}/message/sendText/${EVOLUTION_INSTANCE_NAME}`;
     console.log("Sending to Evolution:", evolutionUrl, "JID:", remoteJid);
 
@@ -82,7 +82,6 @@ serve(async (req) => {
     const evoData = await evoResponse.json();
     console.log("Message sent via Evolution:", JSON.stringify(evoData));
 
-    // Save message in DB
     await supabase.from("messages").insert({
       lead_id: leadId,
       sender: "ai",
