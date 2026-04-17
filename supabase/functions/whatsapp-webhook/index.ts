@@ -159,14 +159,6 @@ function extractMessageText(rawMessage: JsonRecord): string {
   return "";
 }
 
-function normalizeRemoteJid(rawJid: string, sender: string): string {
-  if (rawJid.includes("@lid")) {
-    return getString(sender);
-  }
-
-  return rawJid;
-}
-
 function extractPhoneFromJid(jid: string): string {
   const digits = jid.replace(/@.+$/, "").replace(/\D/g, "");
   return digits ? `+${digits}` : "";
