@@ -6,9 +6,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-function formatWhatsappJid(phone: string) {
-  const digits = phone.replace(/\D/g, "");
-  return `${digits}@s.whatsapp.net`;
+function formatWhatsappNumber(phone: string) {
+  return phone.replace(/\D/g, "");
 }
 
 serve(async (req) => {
