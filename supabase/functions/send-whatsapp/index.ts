@@ -6,9 +6,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-function formatWhatsappJid(phone: string) {
-  const digits = phone.replace(/\D/g, "");
-  return `${digits}@s.whatsapp.net`;
+function formatWhatsappNumber(phone: string) {
+  return phone.replace(/\D/g, "");
 }
 
 serve(async (req) => {
@@ -54,10 +53,10 @@ serve(async (req) => {
       });
     }
 
-    const remoteJid = formatWhatsappJid(lead.phone);
+    const number = formatWhatsappNumber(lead.phone);
     const baseUrl = EVOLUTION_API_URL.replace(/\/+$/, "");
     const evolutionUrl = `${baseUrl}/message/sendText/${EVOLUTION_INSTANCE_NAME}`;
-    console.log("Sending to Evolution:", evolutionUrl, "JID:", remoteJid);
+    console.log("Sending to Evolution:", evolutionUrl, "number:", number);
 
     const evoResponse = await fetch(evolutionUrl, {
       method: "POST",
@@ -66,8 +65,8 @@ serve(async (req) => {
         apikey: EVOLUTION_API_KEY,
       },
       body: JSON.stringify({
-        number: remoteJid,
-        text,
+        number,
+        textMessage: { text },
       }),
     });
 
