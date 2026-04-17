@@ -159,14 +159,6 @@ function extractMessageText(rawMessage: JsonRecord): string {
   return "";
 }
 
-function normalizeRemoteJid(rawJid: string, sender: string): string {
-  if (rawJid.includes("@lid")) {
-    return getString(sender);
-  }
-
-  return rawJid;
-}
-
 function extractPhoneFromJid(jid: string): string {
   const digits = jid.replace(/@.+$/, "").replace(/\D/g, "");
   return digits ? `+${digits}` : "";
@@ -211,17 +203,20 @@ function extractIncomingMessages(payload: JsonRecord): IncomingMessage[] {
   return buildMessageCandidates(payload)
     .map((candidate) => {
       const key = asRecord(candidate.key);
-      const senderCandidate =
-        getString(candidate.sender) ||
-        getString(dataRecord.sender) ||
-        getString(payload.sender) ||
-        getString(key.participant);
+      // Real phone number for @lid contacts (Evolution v2 / Baileys)
+      const senderPn =
+        getString(key.senderPn) ||
+        getString(candidate.senderPn) ||
+        getString(dataRecord.senderPn);
       const rawRemoteJid =
         getString(key.remoteJid) ||
-        getString(candidate.remoteJid) ||
-        senderCandidate;
-      const remoteJid = normalizeRemoteJid(rawRemoteJid, senderCandidate);
-      const phone = extractPhoneFromJid(remoteJid);
+        getString(candidate.remoteJid);
+      // If remoteJid is @lid, prefer senderPn (real phone). Otherwise keep remoteJid.
+      // Never fall back to payload.sender — that's the instance's own number.
+      const remoteJid = rawRemoteJid.includes("@lid") && senderPn
+        ? senderPn
+        : rawRemoteJid;
+      const phone = extractPhoneFromJid(remoteJid) || extractPhoneFromJid(rawRemoteJid);
       const messageText = extractMessageText(asRecord(candidate.message));
       const pushName =
         getString(candidate.pushName) ||
@@ -231,14 +226,14 @@ function extractIncomingMessages(payload: JsonRecord): IncomingMessage[] {
 
       return {
         messageId: getString(key.id) || crypto.randomUUID(),
-        remoteJid,
+        remoteJid: remoteJid || rawRemoteJid,
         phone,
         pushName,
         text: messageText,
         fromMe: key.fromMe === true || candidate.fromMe === true,
       } satisfies IncomingMessage;
     })
-    .filter((message) => Boolean(message.remoteJid) && !message.remoteJid.endsWith("@g.us") && !message.remoteJid.includes("broadcast"));
+    .filter((message) => Boolean(message.phone) && !message.remoteJid.endsWith("@g.us") && !message.remoteJid.includes("broadcast"));
 }
 
 async function findOrCreateLead(supabase: any, phone: string, pushName: string) {
