@@ -55,7 +55,8 @@ serve(async (req) => {
     }
 
     const remoteJid = formatWhatsappJid(lead.phone);
-    const evolutionUrl = `${EVOLUTION_API_URL}/message/sendText/${EVOLUTION_INSTANCE_NAME}`;
+    const baseUrl = EVOLUTION_API_URL.replace(/\/+$/, "");
+    const evolutionUrl = `${baseUrl}/message/sendText/${EVOLUTION_INSTANCE_NAME}`;
     console.log("Sending to Evolution:", evolutionUrl, "JID:", remoteJid);
 
     const evoResponse = await fetch(evolutionUrl, {
@@ -66,7 +67,7 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         number: remoteJid,
-        textMessage: { text },
+        text,
       }),
     });
 
