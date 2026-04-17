@@ -53,10 +53,10 @@ serve(async (req) => {
       });
     }
 
-    const remoteJid = formatWhatsappJid(lead.phone);
+    const number = formatWhatsappNumber(lead.phone);
     const baseUrl = EVOLUTION_API_URL.replace(/\/+$/, "");
     const evolutionUrl = `${baseUrl}/message/sendText/${EVOLUTION_INSTANCE_NAME}`;
-    console.log("Sending to Evolution:", evolutionUrl, "JID:", remoteJid);
+    console.log("Sending to Evolution:", evolutionUrl, "number:", number);
 
     const evoResponse = await fetch(evolutionUrl, {
       method: "POST",
@@ -65,8 +65,8 @@ serve(async (req) => {
         apikey: EVOLUTION_API_KEY,
       },
       body: JSON.stringify({
-        number: remoteJid,
-        text,
+        number,
+        textMessage: { text },
       }),
     });
 
