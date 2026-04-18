@@ -211,12 +211,12 @@ function extractIncomingMessages(payload: JsonRecord): IncomingMessage[] {
       const rawRemoteJid =
         getString(key.remoteJid) ||
         getString(candidate.remoteJid);
-      // If remoteJid is @lid, prefer senderPn (real phone). Otherwise keep remoteJid.
-      // Never fall back to payload.sender — that's the instance's own number.
-      const remoteJid = rawRemoteJid.includes("@lid") && senderPn
-        ? senderPn
+      // If remoteJid is @lid, ONLY accept senderPn (real phone). Never use the @lid as phone.
+      const isLid = rawRemoteJid.includes("@lid");
+      const remoteJid = isLid
+        ? (senderPn || "")
         : rawRemoteJid;
-      const phone = extractPhoneFromJid(remoteJid) || extractPhoneFromJid(rawRemoteJid);
+      const phone = extractPhoneFromJid(remoteJid);
       const messageText = extractMessageText(asRecord(candidate.message));
       const pushName =
         getString(candidate.pushName) ||
@@ -428,15 +428,18 @@ async function buildAiReply(
   return replyText;
 }
 
-async function sendWhatsappReply(remoteJid: string, text: string, url: string, apiKey: string, instanceName: string) {
-  const response = await fetch(`${url}/message/sendText/${instanceName}`, {
+async function sendWhatsappReply(phone: string, text: string, url: string, apiKey: string, instanceName: string) {
+  // Evolution expects digits only, no '+' or '@...'
+  const number = phone.replace(/\D/g, "");
+  const baseUrl = url.replace(/\/+$/, "");
+  const response = await fetch(`${baseUrl}/message/sendText/${instanceName}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       apikey: apiKey,
     },
     body: JSON.stringify({
-      number: remoteJid,
+      number,
       textMessage: { text },
     }),
   });
@@ -486,7 +489,7 @@ async function processIncomingMessage(params: {
 
   const replyText = await buildAiReply(supabase, lead, incoming.phone, lovableApiKey);
   await saveMessage(supabase, lead.id, "ai", replyText);
-  await sendWhatsappReply(incoming.remoteJid, replyText, evolutionApiUrl, evolutionApiKey, evolutionInstanceName);
+  await sendWhatsappReply(incoming.phone, replyText, evolutionApiUrl, evolutionApiKey, evolutionInstanceName);
 
   return { status: "ok", leadId: lead.id, reply: replyText, messageId: incoming.messageId };
 }
