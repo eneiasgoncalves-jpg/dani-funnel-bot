@@ -428,15 +428,18 @@ async function buildAiReply(
   return replyText;
 }
 
-async function sendWhatsappReply(remoteJid: string, text: string, url: string, apiKey: string, instanceName: string) {
-  const response = await fetch(`${url}/message/sendText/${instanceName}`, {
+async function sendWhatsappReply(phone: string, text: string, url: string, apiKey: string, instanceName: string) {
+  // Evolution expects digits only, no '+' or '@...'
+  const number = phone.replace(/\D/g, "");
+  const baseUrl = url.replace(/\/+$/, "");
+  const response = await fetch(`${baseUrl}/message/sendText/${instanceName}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       apikey: apiKey,
     },
     body: JSON.stringify({
-      number: remoteJid,
+      number,
       textMessage: { text },
     }),
   });
