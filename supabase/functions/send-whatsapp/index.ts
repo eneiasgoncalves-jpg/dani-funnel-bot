@@ -6,11 +6,42 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-function formatWhatsappNumber(phone: string) {
+async function resolveRecipient(
+  phone: string,
+  baseUrl: string,
+  apiKey: string,
+  instance: string,
+): Promise<string> {
   const digits = phone.replace(/\D/g, "");
-  // Real BR phones have 12-13 digits (55 + DDD + number). @lid identifiers are 14-15 digits.
-  // For lids, append @lid so Evolution routes via internal identifier.
-  return digits.length > 13 ? `${digits}@lid` : digits;
+  if (digits.length <= 13) return digits;
+
+  // Likely a @lid identifier — resolve to real phone via Evolution.
+  const lidJid = `${digits}@lid`;
+  try {
+    const res = await fetch(`${baseUrl}/chat/findContacts/${instance}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: apiKey },
+      body: JSON.stringify({ where: { id: lidJid } }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const arr = Array.isArray(data) ? data : [];
+      for (const c of arr) {
+        const candidates = [c?.remoteJid, c?.jid, c?.id];
+        for (const cand of candidates) {
+          if (typeof cand === "string" && cand.includes("@s.whatsapp.net")) {
+            const realDigits = cand.replace(/@.+$/, "").replace(/\D/g, "");
+            if (realDigits) return realDigits;
+          }
+        }
+      }
+    } else {
+      console.warn("findContacts non-OK:", res.status, await res.text());
+    }
+  } catch (e) {
+    console.warn("findContacts error:", e);
+  }
+  return lidJid;
 }
 
 serve(async (req) => {
