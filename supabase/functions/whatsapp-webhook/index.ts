@@ -203,7 +203,6 @@ function extractIncomingMessages(payload: JsonRecord): IncomingMessage[] {
   return buildMessageCandidates(payload)
     .map((candidate) => {
       const key = asRecord(candidate.key);
-      // Real phone number for @lid contacts (Evolution v2 / Baileys)
       const senderPn =
         getString(key.senderPn) ||
         getString(candidate.senderPn) ||
@@ -211,12 +210,19 @@ function extractIncomingMessages(payload: JsonRecord): IncomingMessage[] {
       const rawRemoteJid =
         getString(key.remoteJid) ||
         getString(candidate.remoteJid);
-      // If remoteJid is @lid, ONLY accept senderPn (real phone). Never use the @lid as phone.
       const isLid = rawRemoteJid.includes("@lid");
-      const remoteJid = isLid
-        ? (senderPn || "")
-        : rawRemoteJid;
-      const phone = extractPhoneFromJid(remoteJid);
+
+      // For routing replies: prefer real phone if we have it, otherwise the @lid (Evolution accepts both).
+      const replyTarget = isLid && senderPn
+        ? senderPn.replace(/\D/g, "")
+        : rawRemoteJid.replace(/@.+$/, "").replace(/\D/g, "");
+
+      // For lead identity (DB key): use senderPn if available, else the lid digits.
+      // Each unique lid = unique contact, so leads are still per-contact.
+      const phoneSource = isLid && senderPn ? senderPn : rawRemoteJid;
+      const phoneDigits = phoneSource.replace(/@.+$/, "").replace(/\D/g, "");
+      const phone = phoneDigits ? `+${phoneDigits}` : "";
+
       const messageText = extractMessageText(asRecord(candidate.message));
       const pushName =
         getString(candidate.pushName) ||
@@ -226,7 +232,7 @@ function extractIncomingMessages(payload: JsonRecord): IncomingMessage[] {
 
       return {
         messageId: getString(key.id) || crypto.randomUUID(),
-        remoteJid: remoteJid || rawRemoteJid,
+        remoteJid: replyTarget,
         phone,
         pushName,
         text: messageText,
