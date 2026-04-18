@@ -197,7 +197,44 @@ function buildMessageCandidates(payload: JsonRecord): JsonRecord[] {
   return [dataRecord];
 }
 
-function extractIncomingMessages(payload: JsonRecord): IncomingMessage[] {
+async function resolveLidToRealPhone(
+  lidDigits: string,
+  evolutionApiUrl: string,
+  evolutionApiKey: string,
+  evolutionInstanceName: string,
+): Promise<string> {
+  try {
+    const baseUrl = evolutionApiUrl.replace(/\/+$/, "");
+    const res = await fetch(`${baseUrl}/chat/findContacts/${evolutionInstanceName}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: evolutionApiKey },
+      body: JSON.stringify({ where: { id: `${lidDigits}@lid` } }),
+    });
+    if (!res.ok) {
+      console.warn("findContacts non-OK:", res.status, await res.text());
+      return "";
+    }
+    const data = await res.json();
+    const arr = Array.isArray(data) ? data : [];
+    for (const c of arr) {
+      const candidates = [c?.remoteJid, c?.jid, c?.id];
+      for (const cand of candidates) {
+        if (typeof cand === "string" && cand.includes("@s.whatsapp.net")) {
+          const realDigits = cand.replace(/@.+$/, "").replace(/\D/g, "");
+          if (realDigits) return realDigits;
+        }
+      }
+    }
+    return "";
+  } catch (e) {
+    console.warn("resolveLidToRealPhone error:", e);
+    return "";
+  }
+}
+
+type ExtractedMessage = IncomingMessage & { isLid: boolean; lidDigits: string };
+
+function extractIncomingMessages(payload: JsonRecord): ExtractedMessage[] {
   const dataRecord = asRecord(payload.data);
 
   return buildMessageCandidates(payload)
@@ -211,14 +248,14 @@ function extractIncomingMessages(payload: JsonRecord): IncomingMessage[] {
         getString(key.remoteJid) ||
         getString(candidate.remoteJid);
       const isLid = rawRemoteJid.includes("@lid");
+      const lidDigits = isLid ? rawRemoteJid.replace(/@.+$/, "").replace(/\D/g, "") : "";
 
-      // For routing replies: prefer real phone if we have it, otherwise the @lid (Evolution accepts both).
+      // For routing replies: prefer real phone if available
       const replyTarget = isLid && senderPn
         ? senderPn.replace(/\D/g, "")
         : rawRemoteJid.replace(/@.+$/, "").replace(/\D/g, "");
 
-      // For lead identity (DB key): use senderPn if available, else the lid digits.
-      // Each unique lid = unique contact, so leads are still per-contact.
+      // Initial phone (may be lid; resolved later in processIncomingMessage)
       const phoneSource = isLid && senderPn ? senderPn : rawRemoteJid;
       const phoneDigits = phoneSource.replace(/@.+$/, "").replace(/\D/g, "");
       const phone = phoneDigits ? `+${phoneDigits}` : "";
@@ -237,7 +274,9 @@ function extractIncomingMessages(payload: JsonRecord): IncomingMessage[] {
         pushName,
         text: messageText,
         fromMe: key.fromMe === true || candidate.fromMe === true,
-      } satisfies IncomingMessage;
+        isLid: isLid && !senderPn,
+        lidDigits,
+      };
     })
     .filter((message) => Boolean(message.phone) && !message.remoteJid.endsWith("@g.us") && !message.remoteJid.includes("broadcast"));
 }
@@ -458,9 +497,24 @@ async function sendWhatsappReply(phone: string, text: string, url: string, apiKe
   return response.json();
 }
 
+async function mergeLidLeadIntoReal(supabase: any, lidPhone: string, realPhone: string) {
+  // If a lead exists for the @lid phone and another for the real phone, merge messages.
+  const { data: lidLead } = await supabase.from("leads").select("id, name").eq("phone", lidPhone).maybeSingle();
+  if (!lidLead) return;
+  const { data: realLead } = await supabase.from("leads").select("id, name").eq("phone", realPhone).maybeSingle();
+  if (realLead) {
+    // Move messages from lid lead to real lead, then delete lid lead.
+    await supabase.from("messages").update({ lead_id: realLead.id }).eq("lead_id", lidLead.id);
+    await supabase.from("leads").delete().eq("id", lidLead.id);
+  } else {
+    // Just update the lid lead's phone to the real phone.
+    await supabase.from("leads").update({ phone: realPhone }).eq("id", lidLead.id);
+  }
+}
+
 async function processIncomingMessage(params: {
   supabase: any;
-  incoming: IncomingMessage;
+  incoming: ExtractedMessage;
   lovableApiKey: string;
   evolutionApiUrl: string;
   evolutionApiKey: string;
@@ -476,7 +530,25 @@ async function processIncomingMessage(params: {
     return { status: "ignored", reason: "sender_not_found", messageId: incoming.messageId };
   }
 
-  const lead = await findOrCreateLead(supabase, incoming.phone, incoming.pushName);
+  let phone = incoming.phone;
+  let replyTarget = incoming.remoteJid;
+
+  // If incoming is a @lid (no senderPn), try to resolve to real phone
+  if (incoming.isLid && incoming.lidDigits) {
+    const realDigits = await resolveLidToRealPhone(incoming.lidDigits, evolutionApiUrl, evolutionApiKey, evolutionInstanceName);
+    if (realDigits) {
+      const realPhone = `+${realDigits}`;
+      console.log(`Resolved @lid ${incoming.lidDigits} to real phone ${realPhone}`);
+      // Merge any existing lid-based lead into the real-phone lead
+      await mergeLidLeadIntoReal(supabase, phone, realPhone);
+      phone = realPhone;
+      replyTarget = realDigits;
+    } else {
+      console.warn(`Could not resolve @lid ${incoming.lidDigits} to real phone; keeping lid as identifier`);
+    }
+  }
+
+  const lead = await findOrCreateLead(supabase, phone, incoming.pushName);
 
   if (!incoming.text) {
     return { status: "lead_saved_without_text", leadId: lead.id, messageId: incoming.messageId };
@@ -493,9 +565,9 @@ async function processIncomingMessage(params: {
     return { status: "already_transferred", leadId: lead.id, messageId: incoming.messageId };
   }
 
-  const replyText = await buildAiReply(supabase, lead, incoming.phone, lovableApiKey);
+  const replyText = await buildAiReply(supabase, lead, phone, lovableApiKey);
   await saveMessage(supabase, lead.id, "ai", replyText);
-  await sendWhatsappReply(incoming.remoteJid, replyText, evolutionApiUrl, evolutionApiKey, evolutionInstanceName);
+  await sendWhatsappReply(replyTarget, replyText, evolutionApiUrl, evolutionApiKey, evolutionInstanceName);
 
   return { status: "ok", leadId: lead.id, reply: replyText, messageId: incoming.messageId };
 }
