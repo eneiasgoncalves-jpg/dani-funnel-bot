@@ -495,7 +495,7 @@ async function processIncomingMessage(params: {
 
   const replyText = await buildAiReply(supabase, lead, incoming.phone, lovableApiKey);
   await saveMessage(supabase, lead.id, "ai", replyText);
-  await sendWhatsappReply(incoming.phone, replyText, evolutionApiUrl, evolutionApiKey, evolutionInstanceName);
+  await sendWhatsappReply(incoming.remoteJid, replyText, evolutionApiUrl, evolutionApiKey, evolutionInstanceName);
 
   return { status: "ok", leadId: lead.id, reply: replyText, messageId: incoming.messageId };
 }
