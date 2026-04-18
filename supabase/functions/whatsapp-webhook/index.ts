@@ -211,12 +211,12 @@ function extractIncomingMessages(payload: JsonRecord): IncomingMessage[] {
       const rawRemoteJid =
         getString(key.remoteJid) ||
         getString(candidate.remoteJid);
-      // If remoteJid is @lid, prefer senderPn (real phone). Otherwise keep remoteJid.
-      // Never fall back to payload.sender — that's the instance's own number.
-      const remoteJid = rawRemoteJid.includes("@lid") && senderPn
-        ? senderPn
+      // If remoteJid is @lid, ONLY accept senderPn (real phone). Never use the @lid as phone.
+      const isLid = rawRemoteJid.includes("@lid");
+      const remoteJid = isLid
+        ? (senderPn || "")
         : rawRemoteJid;
-      const phone = extractPhoneFromJid(remoteJid) || extractPhoneFromJid(rawRemoteJid);
+      const phone = extractPhoneFromJid(remoteJid);
       const messageText = extractMessageText(asRecord(candidate.message));
       const pushName =
         getString(candidate.pushName) ||
