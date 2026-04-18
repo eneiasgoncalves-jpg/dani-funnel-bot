@@ -474,8 +474,10 @@ async function buildAiReply(
 }
 
 async function sendWhatsappReply(phone: string, text: string, url: string, apiKey: string, instanceName: string) {
-  // Evolution expects digits only, no '+' or '@...'
-  const number = phone.replace(/\D/g, "");
+  // Evolution expects digits only for real numbers; for @lid identifiers use the full lid jid.
+  const digits = phone.replace(/\D/g, "");
+  // Brazilian numbers fit in <=13 digits. Anything longer is a @lid identifier.
+  const number = digits.length > 13 ? `${digits}@lid` : digits;
   const baseUrl = url.replace(/\/+$/, "");
   const response = await fetch(`${baseUrl}/message/sendText/${instanceName}`, {
     method: "POST",
