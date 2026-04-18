@@ -87,8 +87,8 @@ serve(async (req) => {
       });
     }
 
-    const number = formatWhatsappNumber(lead.phone);
     const baseUrl = EVOLUTION_API_URL.replace(/\/+$/, "");
+    const number = await resolveRecipient(lead.phone, baseUrl, EVOLUTION_API_KEY, EVOLUTION_INSTANCE_NAME);
     const evolutionUrl = `${baseUrl}/message/sendText/${EVOLUTION_INSTANCE_NAME}`;
     console.log("Sending to Evolution:", evolutionUrl, "number:", number);
 
