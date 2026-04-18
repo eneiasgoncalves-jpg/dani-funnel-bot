@@ -197,7 +197,44 @@ function buildMessageCandidates(payload: JsonRecord): JsonRecord[] {
   return [dataRecord];
 }
 
-function extractIncomingMessages(payload: JsonRecord): IncomingMessage[] {
+async function resolveLidToRealPhone(
+  lidDigits: string,
+  evolutionApiUrl: string,
+  evolutionApiKey: string,
+  evolutionInstanceName: string,
+): Promise<string> {
+  try {
+    const baseUrl = evolutionApiUrl.replace(/\/+$/, "");
+    const res = await fetch(`${baseUrl}/chat/findContacts/${evolutionInstanceName}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: evolutionApiKey },
+      body: JSON.stringify({ where: { id: `${lidDigits}@lid` } }),
+    });
+    if (!res.ok) {
+      console.warn("findContacts non-OK:", res.status, await res.text());
+      return "";
+    }
+    const data = await res.json();
+    const arr = Array.isArray(data) ? data : [];
+    for (const c of arr) {
+      const candidates = [c?.remoteJid, c?.jid, c?.id];
+      for (const cand of candidates) {
+        if (typeof cand === "string" && cand.includes("@s.whatsapp.net")) {
+          const realDigits = cand.replace(/@.+$/, "").replace(/\D/g, "");
+          if (realDigits) return realDigits;
+        }
+      }
+    }
+    return "";
+  } catch (e) {
+    console.warn("resolveLidToRealPhone error:", e);
+    return "";
+  }
+}
+
+type ExtractedMessage = IncomingMessage & { isLid: boolean; lidDigits: string };
+
+function extractIncomingMessages(payload: JsonRecord): ExtractedMessage[] {
   const dataRecord = asRecord(payload.data);
 
   return buildMessageCandidates(payload)
@@ -211,14 +248,14 @@ function extractIncomingMessages(payload: JsonRecord): IncomingMessage[] {
         getString(key.remoteJid) ||
         getString(candidate.remoteJid);
       const isLid = rawRemoteJid.includes("@lid");
+      const lidDigits = isLid ? rawRemoteJid.replace(/@.+$/, "").replace(/\D/g, "") : "";
 
-      // For routing replies: prefer real phone if we have it, otherwise the @lid (Evolution accepts both).
+      // For routing replies: prefer real phone if available
       const replyTarget = isLid && senderPn
         ? senderPn.replace(/\D/g, "")
         : rawRemoteJid.replace(/@.+$/, "").replace(/\D/g, "");
 
-      // For lead identity (DB key): use senderPn if available, else the lid digits.
-      // Each unique lid = unique contact, so leads are still per-contact.
+      // Initial phone (may be lid; resolved later in processIncomingMessage)
       const phoneSource = isLid && senderPn ? senderPn : rawRemoteJid;
       const phoneDigits = phoneSource.replace(/@.+$/, "").replace(/\D/g, "");
       const phone = phoneDigits ? `+${phoneDigits}` : "";
@@ -237,7 +274,9 @@ function extractIncomingMessages(payload: JsonRecord): IncomingMessage[] {
         pushName,
         text: messageText,
         fromMe: key.fromMe === true || candidate.fromMe === true,
-      } satisfies IncomingMessage;
+        isLid: isLid && !senderPn,
+        lidDigits,
+      };
     })
     .filter((message) => Boolean(message.phone) && !message.remoteJid.endsWith("@g.us") && !message.remoteJid.includes("broadcast"));
 }
