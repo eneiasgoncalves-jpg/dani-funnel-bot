@@ -7,7 +7,10 @@ const corsHeaders = {
 };
 
 function formatWhatsappNumber(phone: string) {
-  return phone.replace(/\D/g, "");
+  const digits = phone.replace(/\D/g, "");
+  // Real BR phones have 12-13 digits (55 + DDD + number). @lid identifiers are 14-15 digits.
+  // For lids, append @lid so Evolution routes via internal identifier.
+  return digits.length > 13 ? `${digits}@lid` : digits;
 }
 
 serve(async (req) => {
