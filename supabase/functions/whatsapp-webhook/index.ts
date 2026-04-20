@@ -487,7 +487,7 @@ async function sendWhatsappReply(phone: string, text: string, url: string, apiKe
     },
     body: JSON.stringify({
       number,
-      textMessage: { text },
+      text,
     }),
   });
 
