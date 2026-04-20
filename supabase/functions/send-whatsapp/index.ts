@@ -100,7 +100,7 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         number,
-        textMessage: { text },
+        text,
       }),
     });
 
