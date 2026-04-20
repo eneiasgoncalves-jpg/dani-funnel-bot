@@ -8,7 +8,7 @@ import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
-import { BarChart3, Sun, Moon, Archive } from 'lucide-react';
+import { BarChart3, Sun, Moon, Archive, Users } from 'lucide-react';
 import { useTheme } from '@/hooks/useTheme';
 import logoDani from '@/assets/logo-dani.jpg';
 import { AddLeadDialog } from '@/components/AddLeadDialog';
@@ -100,6 +100,9 @@ const Index = () => {
             </Button>
             <Button variant="ghost" size="icon" onClick={() => navigate('/arquivados')} title="Conversas arquivadas">
               <Archive className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon" onClick={() => navigate('/clientes')} title="Cadastro de clientes">
+              <Users className="h-4 w-4" />
             </Button>
             <Button variant="outline" size="sm" onClick={() => navigate('/dashboard')} className="gap-2">
               <BarChart3 className="h-4 w-4" />
