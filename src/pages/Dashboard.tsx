@@ -55,35 +55,54 @@ export default function Dashboard() {
   const [selectedMonth, setSelectedMonth] = useState(format(new Date(), 'yyyy-MM'));
   const [loading, setLoading] = useState(true);
 
+  const fetchAll = async () => {
+    const { data } = await supabase
+      .from('leads_analytics')
+      .select('*')
+      .order('data_entrada', { ascending: false });
+    if (data) setAllLeads(data as unknown as LeadAnalytics[]);
+  };
+
+  const fetchLeads = async () => {
+    setLoading(true);
+    const [year, month] = selectedMonth.split('-').map(Number);
+    const start = startOfMonth(new Date(year, month - 1));
+    const end = endOfMonth(new Date(year, month - 1));
+
+    const { data } = await supabase
+      .from('leads_analytics')
+      .select('*')
+      .gte('data_entrada', start.toISOString())
+      .lte('data_entrada', end.toISOString())
+      .order('data_entrada', { ascending: false });
+
+    if (data) setLeads(data as unknown as LeadAnalytics[]);
+    setLoading(false);
+  };
+
+  useEffect(() => { fetchAll(); }, []);
+  useEffect(() => { fetchLeads(); }, [selectedMonth]);
+
+  // Realtime: refresh on any change to leads_analytics
   useEffect(() => {
-    const fetchAll = async () => {
-      const { data } = await supabase
-        .from('leads_analytics')
-        .select('*')
-        .order('data_entrada', { ascending: false });
-      if (data) setAllLeads(data as unknown as LeadAnalytics[]);
+    const channel = supabase
+      .channel('dashboard-analytics')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'leads_analytics' }, () => {
+        fetchAll();
+        fetchLeads();
+      })
+      .subscribe();
+
+    // Also poll every 30s as a safety net
+    const interval = setInterval(() => {
+      fetchAll();
+      fetchLeads();
+    }, 30000);
+
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(interval);
     };
-    fetchAll();
-  }, []);
-
-  useEffect(() => {
-    const fetchLeads = async () => {
-      setLoading(true);
-      const [year, month] = selectedMonth.split('-').map(Number);
-      const start = startOfMonth(new Date(year, month - 1));
-      const end = endOfMonth(new Date(year, month - 1));
-
-      const { data } = await supabase
-        .from('leads_analytics')
-        .select('*')
-        .gte('data_entrada', start.toISOString())
-        .lte('data_entrada', end.toISOString())
-        .order('data_entrada', { ascending: false });
-
-      if (data) setLeads(data as unknown as LeadAnalytics[]);
-      setLoading(false);
-    };
-    fetchLeads();
   }, [selectedMonth]);
 
   const stats = useMemo(() => {
