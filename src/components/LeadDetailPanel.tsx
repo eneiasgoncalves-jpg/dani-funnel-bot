@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { Lead, STATUS_CONFIG, TAG_CONFIG, CHANNEL_CONFIG, LeadStatus, STAGES } from '@/types/lead';
-import { X, Send, Phone, Calendar, MapPin, Users, MessageCircle } from 'lucide-react';
+import { X, Send, Phone, Calendar, MapPin, Users, MessageCircle, Pencil, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { EditLeadDialog } from './EditLeadDialog';
+import { ClienteDialog } from './ClienteDialog';
 
 interface LeadDetailPanelProps {
   lead: Lead;
@@ -13,6 +15,8 @@ interface LeadDetailPanelProps {
 
 export function LeadDetailPanel({ lead, onClose, onMoveStatus, onSendMessage }: LeadDetailPanelProps) {
   const [newMessage, setNewMessage] = useState('');
+  const [editOpen, setEditOpen] = useState(false);
+  const [clienteOpen, setClienteOpen] = useState(false);
 
   const handleSend = () => {
     if (!newMessage.trim()) return;
@@ -35,10 +39,21 @@ export function LeadDetailPanel({ lead, onClose, onMoveStatus, onSendMessage }: 
             </span>
           </div>
         </div>
-        <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1">
-          <X className="w-5 h-5" />
-        </button>
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="icon" onClick={() => setEditOpen(true)} title="Editar lead" className="h-8 w-8">
+            <Pencil className="w-4 h-4" />
+          </Button>
+          <Button variant="ghost" size="icon" onClick={() => setClienteOpen(true)} title="Cadastro de cliente" className="h-8 w-8">
+            <UserPlus className="w-4 h-4" />
+          </Button>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
       </div>
+
+      <EditLeadDialog lead={lead} open={editOpen} onOpenChange={setEditOpen} />
+      <ClienteDialog lead={lead} open={clienteOpen} onOpenChange={setClienteOpen} />
 
       {/* Info */}
       <div className="p-4 border-b border-border space-y-2">
