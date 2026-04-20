@@ -14,6 +14,71 @@ export type Database = {
   }
   public: {
     Tables: {
+      clientes: {
+        Row: {
+          bairro: string | null
+          cep: string | null
+          cidade: string | null
+          cpf: string | null
+          created_at: string
+          data_evento: string | null
+          data_nascimento: string | null
+          email: string | null
+          endereco_completo: string | null
+          id: string
+          lead_id: string | null
+          nome: string
+          observacoes: string | null
+          telefone: string
+          updated_at: string
+          valor_contrato: number | null
+        }
+        Insert: {
+          bairro?: string | null
+          cep?: string | null
+          cidade?: string | null
+          cpf?: string | null
+          created_at?: string
+          data_evento?: string | null
+          data_nascimento?: string | null
+          email?: string | null
+          endereco_completo?: string | null
+          id?: string
+          lead_id?: string | null
+          nome: string
+          observacoes?: string | null
+          telefone: string
+          updated_at?: string
+          valor_contrato?: number | null
+        }
+        Update: {
+          bairro?: string | null
+          cep?: string | null
+          cidade?: string | null
+          cpf?: string | null
+          created_at?: string
+          data_evento?: string | null
+          data_nascimento?: string | null
+          email?: string | null
+          endereco_completo?: string | null
+          id?: string
+          lead_id?: string | null
+          nome?: string
+          observacoes?: string | null
+          telefone?: string
+          updated_at?: string
+          valor_contrato?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clientes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leads: {
         Row: {
           archived: boolean
