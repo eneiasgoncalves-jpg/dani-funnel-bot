@@ -22,6 +22,7 @@ function mapDbLeadToLead(dbLead: DbLead, messages: ChatMessage[]): Lead {
     tags: (dbLead.tags || []) as Lead['tags'],
     feedbackSent: (dbLead as any).feedback_sent ?? false,
     messages,
+    aiEnabled: (dbLead as any).ai_enabled ?? true,
     createdAt: new Date(dbLead.created_at),
     updatedAt: new Date(dbLead.updated_at),
     readUntil: (dbLead as any).read_until ? new Date((dbLead as any).read_until) : null,
