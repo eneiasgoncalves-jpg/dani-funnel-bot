@@ -329,9 +329,9 @@ export default function Dashboard() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Data</TableHead>
-                  <TableHead>WhatsApp</TableHead>
+                  <TableHead>Nome</TableHead>
                   <TableHead>Cidade</TableHead>
-                  <TableHead>Plataforma</TableHead>
+                  <TableHead>Canal</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Ação</TableHead>
                 </TableRow>
@@ -345,9 +345,8 @@ export default function Dashboard() {
                   </TableRow>
                 ) : (
                   recentLeads.map(lead => {
-                    const badge = STATUS_BADGE[lead.status] || STATUS_BADGE.aberto;
-                    // @ts-ignore migrating
-                    const _ = null; return (
+                    const badge = STATUS_BADGE[lead.status] || STATUS_BADGE.novo;
+                    return (
                       <TableRow key={lead.id}>
                         <TableCell className="text-sm">
                           {format(new Date(lead.created_at), 'dd/MM/yyyy')}
