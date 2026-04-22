@@ -1,5 +1,5 @@
 import { Lead, TAG_CONFIG, CHANNEL_CONFIG } from '@/types/lead';
-import { Phone, Calendar, MapPin, Users, CheckCircle2, Clock, Trash2, Archive } from 'lucide-react';
+import { Phone, Calendar, MapPin, Users, CheckCircle2, Clock, Trash2, Archive, BotOff } from 'lucide-react';
 
 interface LeadCardProps {
   lead: Lead;
@@ -25,6 +25,11 @@ export function LeadCard({ lead, onClick, unreadCount = 0, onDelete, onArchive }
       <div className="flex items-start justify-between mb-2">
         <h4 className="font-semibold text-card-foreground text-sm truncate">{lead.name}</h4>
         <div className="flex items-center gap-1 ml-2 shrink-0">
+          {!lead.aiEnabled && (
+            <span title="IA desativada" className="text-muted-foreground">
+              <BotOff className="w-3.5 h-3.5" />
+            </span>
+          )}
           <span className="text-xs text-muted-foreground">
             {CHANNEL_CONFIG[lead.channel].emoji}
           </span>
