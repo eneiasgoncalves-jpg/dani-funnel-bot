@@ -81,6 +81,7 @@ export type Database = {
       }
       leads: {
         Row: {
+          ai_enabled: boolean
           archived: boolean
           channel: Database["public"]["Enums"]["sales_channel"]
           children_age: string | null
@@ -100,6 +101,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          ai_enabled?: boolean
           archived?: boolean
           channel?: Database["public"]["Enums"]["sales_channel"]
           children_age?: string | null
@@ -119,6 +121,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          ai_enabled?: boolean
           archived?: boolean
           channel?: Database["public"]["Enums"]["sales_channel"]
           children_age?: string | null

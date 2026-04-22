@@ -563,6 +563,11 @@ async function processIncomingMessage(params: {
     return { status: "saved_only", leadId: lead.id, messageId: incoming.messageId };
   }
 
+  // Per-lead AI toggle
+  if (lead.ai_enabled === false) {
+    return { status: "ai_disabled_for_lead", leadId: lead.id, messageId: incoming.messageId };
+  }
+
   if (TRANSFERRED_STATUSES.includes(lead.status as typeof TRANSFERRED_STATUSES[number])) {
     return { status: "already_transferred", leadId: lead.id, messageId: incoming.messageId };
   }

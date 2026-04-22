@@ -22,6 +22,7 @@ function mapDbLeadToLead(dbLead: DbLead, messages: ChatMessage[]): Lead {
     tags: (dbLead.tags || []) as Lead['tags'],
     feedbackSent: (dbLead as any).feedback_sent ?? false,
     messages,
+    aiEnabled: (dbLead as any).ai_enabled ?? true,
     createdAt: new Date(dbLead.created_at),
     updatedAt: new Date(dbLead.updated_at),
     readUntil: (dbLead as any).read_until ? new Date((dbLead as any).read_until) : null,
@@ -132,6 +133,12 @@ export function useLeads() {
     await supabase.from('leads').update({ read_until: new Date().toISOString() } as any).eq('id', leadId);
   }, []);
 
+  const toggleAiEnabled = useCallback(async (leadId: string) => {
+    const lead = leads.find(l => l.id === leadId);
+    if (!lead) return;
+    await supabase.from('leads').update({ ai_enabled: !lead.aiEnabled } as any).eq('id', leadId);
+  }, [leads]);
+
   const getUnreadCount = useCallback((leadId: string): number => {
     const lead = leads.find(l => l.id === leadId);
     if (!lead) return 0;
@@ -165,6 +172,7 @@ export function useLeads() {
     deleteLead,
     archiveLead,
     markAsRead,
+    toggleAiEnabled,
     getUnreadCount,
     getLeadsByStatus,
     stats,
