@@ -14,25 +14,36 @@ import { useNavigate } from 'react-router-dom';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
-interface LeadAnalytics {
+interface LeadRow {
   id: string;
-  cliente_whatsapp: string;
-  cidade: string | null;
-  plataforma: string;
+  name: string;
+  phone: string;
+  city: string | null;
+  channel: string;
   status: string;
-  data_entrada: string;
-  data_fechamento: string | null;
-  valor_contrato: number | null;
+  created_at: string;
+  updated_at: string;
+  archived: boolean;
 }
 
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
+  novo: { label: 'Novo', className: 'bg-blue-500/15 text-blue-700 border-blue-500/30' },
+  analise: { label: 'Em Análise', className: 'bg-yellow-500/15 text-yellow-700 border-yellow-500/30' },
+  proposta: { label: 'Proposta', className: 'bg-orange-500/15 text-orange-700 border-orange-500/30' },
+  contra_proposta: { label: 'Contra-proposta', className: 'bg-purple-500/15 text-purple-700 border-purple-500/30' },
   fechado: { label: 'Fechado', className: 'bg-emerald-500/15 text-emerald-700 border-emerald-500/30' },
-  em_analise: { label: 'Em Análise', className: 'bg-yellow-500/15 text-yellow-700 border-yellow-500/30' },
-  aberto: { label: 'Aberto', className: 'bg-blue-500/15 text-blue-700 border-blue-500/30' },
-  desistente: { label: 'Desistente', className: 'bg-red-500/15 text-red-700 border-red-500/30' },
+  perdido: { label: 'Perdido', className: 'bg-red-500/15 text-red-700 border-red-500/30' },
 };
 
-const PIE_COLORS = ['hsl(16, 85%, 58%)', 'hsl(45, 93%, 58%)', 'hsl(280, 60%, 55%)'];
+const CHANNEL_LABELS: Record<string, string> = {
+  whatsapp: 'WhatsApp',
+  instagram: 'Instagram',
+  google: 'Google',
+  site: 'Site',
+  indicacao: 'Indicação',
+};
+
+const PIE_COLORS = ['hsl(16, 85%, 58%)', 'hsl(45, 93%, 58%)', 'hsl(280, 60%, 55%)', 'hsl(200, 70%, 50%)', 'hsl(142, 71%, 45%)'];
 
 const monthOptions = () => {
   const options = [];
@@ -50,17 +61,17 @@ const monthOptions = () => {
 export default function Dashboard() {
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
-  const [leads, setLeads] = useState<LeadAnalytics[]>([]);
-  const [allLeads, setAllLeads] = useState<LeadAnalytics[]>([]);
+  const [leads, setLeads] = useState<LeadRow[]>([]);
+  const [allLeads, setAllLeads] = useState<LeadRow[]>([]);
   const [selectedMonth, setSelectedMonth] = useState(format(new Date(), 'yyyy-MM'));
   const [loading, setLoading] = useState(true);
 
   const fetchAll = async () => {
     const { data } = await supabase
-      .from('leads_analytics')
+      .from('leads')
       .select('*')
-      .order('data_entrada', { ascending: false });
-    if (data) setAllLeads(data as unknown as LeadAnalytics[]);
+      .order('created_at', { ascending: false });
+    if (data) setAllLeads(data as unknown as LeadRow[]);
   };
 
   const fetchLeads = async () => {
@@ -70,13 +81,13 @@ export default function Dashboard() {
     const end = endOfMonth(new Date(year, month - 1));
 
     const { data } = await supabase
-      .from('leads_analytics')
+      .from('leads')
       .select('*')
-      .gte('data_entrada', start.toISOString())
-      .lte('data_entrada', end.toISOString())
-      .order('data_entrada', { ascending: false });
+      .gte('created_at', start.toISOString())
+      .lte('created_at', end.toISOString())
+      .order('created_at', { ascending: false });
 
-    if (data) setLeads(data as unknown as LeadAnalytics[]);
+    if (data) setLeads(data as unknown as LeadRow[]);
     setLoading(false);
   };
 
@@ -107,17 +118,17 @@ export default function Dashboard() {
 
   const stats = useMemo(() => {
     const total = leads.length;
-    const fechados = leads.filter(l => l.status === 'fechado');
-    const taxa = total > 0 ? ((fechados.length / total) * 100).toFixed(1) : '0';
-    const vendas = fechados.reduce((sum, l) => sum + (l.valor_contrato || 0), 0);
-    const desistencias = leads.filter(l => l.status === 'desistente').length;
-    return { total, taxa, vendas, desistencias };
+    const fechados = leads.filter(l => l.status === 'fechado').length;
+    const taxa = total > 0 ? ((fechados / total) * 100).toFixed(1) : '0';
+    const perdidos = leads.filter(l => l.status === 'perdido').length;
+    return { total, taxa, fechados, perdidos };
   }, [leads]);
 
   const pieData = useMemo(() => {
     const map: Record<string, number> = {};
     leads.forEach(l => {
-      map[l.plataforma] = (map[l.plataforma] || 0) + 1;
+      const label = CHANNEL_LABELS[l.channel] || l.channel;
+      map[label] = (map[label] || 0) + 1;
     });
     return Object.entries(map).map(([name, value]) => ({ name, value }));
   }, [leads]);
@@ -130,13 +141,13 @@ export default function Dashboard() {
       const start = startOfMonth(d);
       const end = endOfMonth(d);
       const entradas = allLeads.filter(l => {
-        const de = new Date(l.data_entrada);
+        const de = new Date(l.created_at);
         return de >= start && de <= end;
       }).length;
       const fechamentos = allLeads.filter(l => {
-        if (!l.data_fechamento) return false;
-        const df = new Date(l.data_fechamento);
-        return df >= start && df <= end;
+        if (l.status !== 'fechado') return false;
+        const du = new Date(l.updated_at);
+        return du >= start && du <= end;
       }).length;
       months.push({
         month: format(d, 'MMM', { locale: ptBR }),
@@ -232,7 +243,7 @@ export default function Dashboard() {
                 <div>
                   <p className="text-xs text-muted-foreground">Vendas Fechadas</p>
                   <p className="text-2xl font-bold text-foreground">
-                    R$ {stats.vendas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    {stats.fechados}
                   </p>
                 </div>
               </div>
@@ -246,7 +257,7 @@ export default function Dashboard() {
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Desistências</p>
-                  <p className="text-2xl font-bold text-foreground">{stats.desistencias}</p>
+                  <p className="text-2xl font-bold text-foreground">{stats.perdidos}</p>
                 </div>
               </div>
             </CardContent>
@@ -318,9 +329,9 @@ export default function Dashboard() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Data</TableHead>
-                  <TableHead>WhatsApp</TableHead>
+                  <TableHead>Nome</TableHead>
                   <TableHead>Cidade</TableHead>
-                  <TableHead>Plataforma</TableHead>
+                  <TableHead>Canal</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Ação</TableHead>
                 </TableRow>
@@ -334,15 +345,15 @@ export default function Dashboard() {
                   </TableRow>
                 ) : (
                   recentLeads.map(lead => {
-                    const badge = STATUS_BADGE[lead.status] || STATUS_BADGE.aberto;
+                    const badge = STATUS_BADGE[lead.status] || STATUS_BADGE.novo;
                     return (
                       <TableRow key={lead.id}>
                         <TableCell className="text-sm">
-                          {format(new Date(lead.data_entrada), 'dd/MM/yyyy')}
+                          {format(new Date(lead.created_at), 'dd/MM/yyyy')}
                         </TableCell>
-                        <TableCell className="text-sm font-mono">{lead.cliente_whatsapp}</TableCell>
-                        <TableCell className="text-sm">{lead.cidade || '—'}</TableCell>
-                        <TableCell className="text-sm">{lead.plataforma}</TableCell>
+                        <TableCell className="text-sm">{lead.name || '—'}</TableCell>
+                        <TableCell className="text-sm">{lead.city || '—'}</TableCell>
+                        <TableCell className="text-sm">{CHANNEL_LABELS[lead.channel] || lead.channel}</TableCell>
                         <TableCell>
                           <Badge variant="outline" className={badge.className}>
                             {badge.label}
