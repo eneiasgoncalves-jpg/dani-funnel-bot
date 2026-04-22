@@ -243,7 +243,7 @@ export default function Dashboard() {
                 <div>
                   <p className="text-xs text-muted-foreground">Vendas Fechadas</p>
                   <p className="text-2xl font-bold text-foreground">
-                    R$ {stats.vendas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    {stats.fechados}
                   </p>
                 </div>
               </div>
