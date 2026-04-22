@@ -31,6 +31,7 @@ export const sampleLeads: Lead[] = [
     createdAt: new Date(now.getTime() - 30 * 60000),
     updatedAt: now,
     readUntil: null,
+    aiEnabled: true,
   },
   {
     id: '2',
@@ -55,6 +56,7 @@ export const sampleLeads: Lead[] = [
     createdAt: new Date(now.getTime() - 120 * 60000),
     updatedAt: now,
     readUntil: null,
+    aiEnabled: true,
   },
   {
     id: '3',
@@ -77,6 +79,7 @@ export const sampleLeads: Lead[] = [
     createdAt: new Date(now.getTime() - 240 * 60000),
     updatedAt: now,
     readUntil: null,
+    aiEnabled: true,
   },
   {
     id: '4',
@@ -99,6 +102,7 @@ export const sampleLeads: Lead[] = [
     createdAt: new Date(now.getTime() - 300 * 60000),
     updatedAt: now,
     readUntil: null,
+    aiEnabled: true,
   },
   {
     id: '5',
@@ -121,6 +125,7 @@ export const sampleLeads: Lead[] = [
     createdAt: new Date(now.getTime() - 600 * 60000),
     updatedAt: now,
     readUntil: null,
+    aiEnabled: true,
   },
   {
     id: '6',
@@ -142,5 +147,6 @@ export const sampleLeads: Lead[] = [
     createdAt: new Date(now.getTime() - 1200 * 60000),
     updatedAt: now,
     readUntil: null,
+    aiEnabled: true,
   },
 ];
