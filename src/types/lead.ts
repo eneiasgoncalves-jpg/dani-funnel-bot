@@ -26,6 +26,7 @@ export interface Lead {
   tags: LeadTag[];
   feedbackSent: boolean;
   messages: ChatMessage[];
+  aiEnabled: boolean;
   createdAt: Date;
   updatedAt: Date;
   readUntil: Date | null;
