@@ -61,17 +61,17 @@ const monthOptions = () => {
 export default function Dashboard() {
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
-  const [leads, setLeads] = useState<LeadAnalytics[]>([]);
-  const [allLeads, setAllLeads] = useState<LeadAnalytics[]>([]);
+  const [leads, setLeads] = useState<LeadRow[]>([]);
+  const [allLeads, setAllLeads] = useState<LeadRow[]>([]);
   const [selectedMonth, setSelectedMonth] = useState(format(new Date(), 'yyyy-MM'));
   const [loading, setLoading] = useState(true);
 
   const fetchAll = async () => {
     const { data } = await supabase
-      .from('leads_analytics')
+      .from('leads')
       .select('*')
-      .order('data_entrada', { ascending: false });
-    if (data) setAllLeads(data as unknown as LeadAnalytics[]);
+      .order('created_at', { ascending: false });
+    if (data) setAllLeads(data as unknown as LeadRow[]);
   };
 
   const fetchLeads = async () => {
@@ -81,13 +81,13 @@ export default function Dashboard() {
     const end = endOfMonth(new Date(year, month - 1));
 
     const { data } = await supabase
-      .from('leads_analytics')
+      .from('leads')
       .select('*')
-      .gte('data_entrada', start.toISOString())
-      .lte('data_entrada', end.toISOString())
-      .order('data_entrada', { ascending: false });
+      .gte('created_at', start.toISOString())
+      .lte('created_at', end.toISOString())
+      .order('created_at', { ascending: false });
 
-    if (data) setLeads(data as unknown as LeadAnalytics[]);
+    if (data) setLeads(data as unknown as LeadRow[]);
     setLoading(false);
   };
 
