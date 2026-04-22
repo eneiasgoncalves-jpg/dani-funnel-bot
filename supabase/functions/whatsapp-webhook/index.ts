@@ -561,6 +561,17 @@ async function processIncomingMessage(params: {
     return { status: "ignored", reason: "sender_not_found", messageId: incoming.messageId };
   }
 
+  // Deduplicate: check if this Evolution messageId was already processed
+  const { data: existingMsg } = await supabase
+    .from("messages")
+    .select("id")
+    .eq("evolution_id", incoming.messageId)
+    .maybeSingle();
+  if (existingMsg) {
+    console.log(`Skipping duplicate message ${incoming.messageId}`);
+    return { status: "duplicate", messageId: incoming.messageId };
+  }
+
   let phone = incoming.phone;
   let replyTarget = incoming.remoteJid;
 
@@ -585,7 +596,7 @@ async function processIncomingMessage(params: {
     return { status: "lead_saved_without_text", leadId: lead.id, messageId: incoming.messageId };
   }
 
-  await saveMessage(supabase, lead.id, "client", incoming.text);
+  await saveMessage(supabase, lead.id, "client", incoming.text, incoming.messageId);
 
   const autoAttendanceEnabled = await getAutoAttendanceEnabled(supabase);
   if (!autoAttendanceEnabled) {
