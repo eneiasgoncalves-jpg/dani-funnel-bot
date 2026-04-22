@@ -14,25 +14,36 @@ import { useNavigate } from 'react-router-dom';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
-interface LeadAnalytics {
+interface LeadRow {
   id: string;
-  cliente_whatsapp: string;
-  cidade: string | null;
-  plataforma: string;
+  name: string;
+  phone: string;
+  city: string | null;
+  channel: string;
   status: string;
-  data_entrada: string;
-  data_fechamento: string | null;
-  valor_contrato: number | null;
+  created_at: string;
+  updated_at: string;
+  archived: boolean;
 }
 
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
+  novo: { label: 'Novo', className: 'bg-blue-500/15 text-blue-700 border-blue-500/30' },
+  analise: { label: 'Em Análise', className: 'bg-yellow-500/15 text-yellow-700 border-yellow-500/30' },
+  proposta: { label: 'Proposta', className: 'bg-orange-500/15 text-orange-700 border-orange-500/30' },
+  contra_proposta: { label: 'Contra-proposta', className: 'bg-purple-500/15 text-purple-700 border-purple-500/30' },
   fechado: { label: 'Fechado', className: 'bg-emerald-500/15 text-emerald-700 border-emerald-500/30' },
-  em_analise: { label: 'Em Análise', className: 'bg-yellow-500/15 text-yellow-700 border-yellow-500/30' },
-  aberto: { label: 'Aberto', className: 'bg-blue-500/15 text-blue-700 border-blue-500/30' },
-  desistente: { label: 'Desistente', className: 'bg-red-500/15 text-red-700 border-red-500/30' },
+  perdido: { label: 'Perdido', className: 'bg-red-500/15 text-red-700 border-red-500/30' },
 };
 
-const PIE_COLORS = ['hsl(16, 85%, 58%)', 'hsl(45, 93%, 58%)', 'hsl(280, 60%, 55%)'];
+const CHANNEL_LABELS: Record<string, string> = {
+  whatsapp: 'WhatsApp',
+  instagram: 'Instagram',
+  google: 'Google',
+  site: 'Site',
+  indicacao: 'Indicação',
+};
+
+const PIE_COLORS = ['hsl(16, 85%, 58%)', 'hsl(45, 93%, 58%)', 'hsl(280, 60%, 55%)', 'hsl(200, 70%, 50%)', 'hsl(142, 71%, 45%)'];
 
 const monthOptions = () => {
   const options = [];
