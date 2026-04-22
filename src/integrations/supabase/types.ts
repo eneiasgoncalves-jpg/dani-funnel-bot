@@ -178,6 +178,7 @@ export type Database = {
       messages: {
         Row: {
           created_at: string
+          evolution_id: string | null
           id: string
           lead_id: string
           sender: string
@@ -185,6 +186,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          evolution_id?: string | null
           id?: string
           lead_id: string
           sender: string
@@ -192,6 +194,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          evolution_id?: string | null
           id?: string
           lead_id?: string
           sender?: string
