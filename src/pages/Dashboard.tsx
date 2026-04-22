@@ -118,17 +118,17 @@ export default function Dashboard() {
 
   const stats = useMemo(() => {
     const total = leads.length;
-    const fechados = leads.filter(l => l.status === 'fechado');
-    const taxa = total > 0 ? ((fechados.length / total) * 100).toFixed(1) : '0';
-    const vendas = fechados.reduce((sum, l) => sum + (l.valor_contrato || 0), 0);
-    const desistencias = leads.filter(l => l.status === 'desistente').length;
-    return { total, taxa, vendas, desistencias };
+    const fechados = leads.filter(l => l.status === 'fechado').length;
+    const taxa = total > 0 ? ((fechados / total) * 100).toFixed(1) : '0';
+    const perdidos = leads.filter(l => l.status === 'perdido').length;
+    return { total, taxa, fechados, perdidos };
   }, [leads]);
 
   const pieData = useMemo(() => {
     const map: Record<string, number> = {};
     leads.forEach(l => {
-      map[l.plataforma] = (map[l.plataforma] || 0) + 1;
+      const label = CHANNEL_LABELS[l.channel] || l.channel;
+      map[label] = (map[label] || 0) + 1;
     });
     return Object.entries(map).map(([name, value]) => ({ name, value }));
   }, [leads]);
@@ -141,13 +141,13 @@ export default function Dashboard() {
       const start = startOfMonth(d);
       const end = endOfMonth(d);
       const entradas = allLeads.filter(l => {
-        const de = new Date(l.data_entrada);
+        const de = new Date(l.created_at);
         return de >= start && de <= end;
       }).length;
       const fechamentos = allLeads.filter(l => {
-        if (!l.data_fechamento) return false;
-        const df = new Date(l.data_fechamento);
-        return df >= start && df <= end;
+        if (l.status !== 'fechado') return false;
+        const du = new Date(l.updated_at);
+        return du >= start && du <= end;
       }).length;
       months.push({
         month: format(d, 'MMM', { locale: ptBR }),
