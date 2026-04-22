@@ -25,6 +25,7 @@ const Index = () => {
     archiveLead,
     markAsRead,
     getUnreadCount,
+    toggleAiEnabled,
     getLeadsByStatus,
     stats,
   } = useLeads();
@@ -152,6 +153,7 @@ const Index = () => {
             onClose={() => setSelectedLeadId(null)}
             onMoveStatus={moveLeadToStatus}
             onSendMessage={addMessage}
+            onToggleAi={toggleAiEnabled}
           />
         </>
       )}
