@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Lead, STATUS_CONFIG, TAG_CONFIG, CHANNEL_CONFIG, LeadStatus, STAGES } from '@/types/lead';
-import { X, Send, Phone, Calendar, MapPin, Users, MessageCircle, Pencil, UserPlus } from 'lucide-react';
+import { X, Send, Phone, Calendar, MapPin, Users, MessageCircle, Pencil, UserPlus, Bot, BotOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import { EditLeadDialog } from './EditLeadDialog';
 import { ClienteDialog } from './ClienteDialog';
 
@@ -11,9 +12,10 @@ interface LeadDetailPanelProps {
   onClose: () => void;
   onMoveStatus: (leadId: string, status: LeadStatus) => void;
   onSendMessage: (leadId: string, message: { sender: 'ai'; text: string }) => void;
+  onToggleAi?: (leadId: string) => void;
 }
 
-export function LeadDetailPanel({ lead, onClose, onMoveStatus, onSendMessage }: LeadDetailPanelProps) {
+export function LeadDetailPanel({ lead, onClose, onMoveStatus, onSendMessage, onToggleAi }: LeadDetailPanelProps) {
   const [newMessage, setNewMessage] = useState('');
   const [editOpen, setEditOpen] = useState(false);
   const [clienteOpen, setClienteOpen] = useState(false);
@@ -72,6 +74,18 @@ export function LeadDetailPanel({ lead, onClose, onMoveStatus, onSendMessage }: 
           </div>
         </div>
         {lead.interest && <p className="text-xs text-primary font-medium">🎈 {lead.interest}</p>}
+        {/* AI toggle per lead */}
+        <div className="flex items-center gap-2 pt-1">
+          {lead.aiEnabled ? <Bot className="w-3.5 h-3.5 text-emerald-500" /> : <BotOff className="w-3.5 h-3.5 text-muted-foreground" />}
+          <Switch
+            checked={lead.aiEnabled}
+            onCheckedChange={() => onToggleAi?.(lead.id)}
+            className="scale-75 origin-left"
+          />
+          <span className={`text-[10px] font-medium ${lead.aiEnabled ? 'text-emerald-500' : 'text-muted-foreground'}`}>
+            {lead.aiEnabled ? 'IA Ativa' : 'IA Desativada'}
+          </span>
+        </div>
         <div className="flex gap-1 flex-wrap">
           {lead.tags.map(tag => (
             <span key={tag} className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${TAG_CONFIG[tag].bgClass} ${TAG_CONFIG[tag].textClass}`}>
