@@ -257,7 +257,7 @@ export default function Dashboard() {
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Desistências</p>
-                  <p className="text-2xl font-bold text-foreground">{stats.desistencias}</p>
+                  <p className="text-2xl font-bold text-foreground">{stats.perdidos}</p>
                 </div>
               </div>
             </CardContent>
@@ -346,14 +346,15 @@ export default function Dashboard() {
                 ) : (
                   recentLeads.map(lead => {
                     const badge = STATUS_BADGE[lead.status] || STATUS_BADGE.aberto;
-                    return (
+                    // @ts-ignore migrating
+                    const _ = null; return (
                       <TableRow key={lead.id}>
                         <TableCell className="text-sm">
-                          {format(new Date(lead.data_entrada), 'dd/MM/yyyy')}
+                          {format(new Date(lead.created_at), 'dd/MM/yyyy')}
                         </TableCell>
-                        <TableCell className="text-sm font-mono">{lead.cliente_whatsapp}</TableCell>
-                        <TableCell className="text-sm">{lead.cidade || '—'}</TableCell>
-                        <TableCell className="text-sm">{lead.plataforma}</TableCell>
+                        <TableCell className="text-sm">{lead.name || '—'}</TableCell>
+                        <TableCell className="text-sm">{lead.city || '—'}</TableCell>
+                        <TableCell className="text-sm">{CHANNEL_LABELS[lead.channel] || lead.channel}</TableCell>
                         <TableCell>
                           <Badge variant="outline" className={badge.className}>
                             {badge.label}
