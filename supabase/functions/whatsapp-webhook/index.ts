@@ -364,11 +364,13 @@ async function saveMessage(
   leadId: string,
   sender: "client" | "ai",
   text: string,
+  evolutionId?: string,
 ) {
   const { error } = await supabase.from("messages").insert({
     lead_id: leadId,
     sender,
     text,
+    ...(evolutionId ? { evolution_id: evolutionId } : {}),
   });
 
   if (error) {
