@@ -298,7 +298,6 @@ type ExtractedMessage = IncomingMessage & {
 
 function extractIncomingMessages(payload: JsonRecord): ExtractedMessage[] {
   const dataRecord = asRecord(payload.data);
-  const payloadSender = getString(payload.sender);
 
   return buildMessageCandidates(payload)
     .map((candidate) => {
@@ -317,11 +316,6 @@ function extractIncomingMessages(payload: JsonRecord): ExtractedMessage[] {
           const digits = senderPn.replace(/@.+$/, "").replace(/\D/g, "");
           phone = `+${digits}`;
           replyTarget = digits;
-        } else if (payloadSender && payloadSender.includes("@s.whatsapp.net")) {
-          const digits = payloadSender.replace(/@.+$/, "").replace(/\D/g, "");
-          phone = `+${digits}`;
-          replyTarget = digits;
-          console.log(`[LID] Using payload.sender ${payloadSender} for @lid ${rawRemoteJid}`);
         }
       } else {
         const digits = rawRemoteJid.replace(/@.+$/, "").replace(/\D/g, "");
