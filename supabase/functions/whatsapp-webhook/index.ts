@@ -289,7 +289,12 @@ async function resolveLidToRealPhone(
   }
 }
 
-type ExtractedMessage = IncomingMessage & { isLid: boolean; lidDigits: string };
+type ExtractedMessage = IncomingMessage & {
+  isLid: boolean;
+  lidDigits: string;
+  previousRemoteJid: string;
+  rawRemoteJid: string;
+};
 
 function extractIncomingMessages(payload: JsonRecord): ExtractedMessage[] {
   const dataRecord = asRecord(payload.data);
@@ -300,6 +305,7 @@ function extractIncomingMessages(payload: JsonRecord): ExtractedMessage[] {
       const key = asRecord(candidate.key);
       const senderPn = getString(key.senderPn) || getString(candidate.senderPn) || getString(dataRecord.senderPn);
       const rawRemoteJid = getString(key.remoteJid) || getString(candidate.remoteJid);
+      const previousRemoteJid = getString(key.previousRemoteJid) || getString(candidate.previousRemoteJid);
       const isLid = rawRemoteJid.includes("@lid");
       const lidDigits = isLid ? rawRemoteJid.replace(/@.+$/, "").replace(/\D/g, "") : "";
 
@@ -337,6 +343,8 @@ function extractIncomingMessages(payload: JsonRecord): ExtractedMessage[] {
         fromMe: key.fromMe === true || candidate.fromMe === true,
         isLid: stillUnresolved,
         lidDigits: stillUnresolved ? lidDigits : "",
+        previousRemoteJid,
+        rawRemoteJid,
       };
     })
     .filter(
@@ -594,14 +602,56 @@ async function processIncomingMessage(params: {
   let phone = incoming.phone;
   let replyTarget = incoming.remoteJid;
 
+  // Tipo A: temos previousRemoteJid (@lid) + remoteJid (@s.whatsapp.net)
+  // Persistimos o mapeamento LID -> número real para resolver Tipo B futuro
+  if (
+    incoming.previousRemoteJid &&
+    incoming.previousRemoteJid.includes("@lid") &&
+    incoming.rawRemoteJid.includes("@s.whatsapp.net")
+  ) {
+    const realDigits = incoming.rawRemoteJid.replace(/@.+$/, "").replace(/\D/g, "");
+    if (realDigits) {
+      const { error: upsertError } = await supabase
+        .from("lid_mappings")
+        .upsert({ lid: incoming.previousRemoteJid, phone: `+${realDigits}` }, { onConflict: "lid" });
+      if (upsertError) {
+        console.warn(`[LID] Failed to upsert mapping ${incoming.previousRemoteJid}:`, upsertError.message);
+      } else {
+        console.log(`[LID] Saved mapping ${incoming.previousRemoteJid} -> +${realDigits}`);
+      }
+    }
+  }
+
   // Se é @lid sem senderPn, tenta resolver para número real
   if (incoming.isLid && incoming.lidDigits) {
-    const realDigits = await resolveLidToRealPhone(
-      incoming.lidDigits,
-      evolutionApiUrl,
-      evolutionApiKey,
-      evolutionInstanceName,
-    );
+    // 1) Buscar primeiro na tabela de mapeamentos
+    const lidKey = `${incoming.lidDigits}@lid`;
+    const { data: lidMap } = await supabase
+      .from("lid_mappings")
+      .select("phone")
+      .eq("lid", lidKey)
+      .maybeSingle();
+
+    let realDigits = "";
+    if (lidMap?.phone) {
+      realDigits = String(lidMap.phone).replace(/\D/g, "");
+      console.log(`[LID] Resolved ${lidKey} via lid_mappings -> +${realDigits}`);
+    } else {
+      // 2) Fallback: tentar resolver via API da Evolution
+      realDigits = await resolveLidToRealPhone(
+        incoming.lidDigits,
+        evolutionApiUrl,
+        evolutionApiKey,
+        evolutionInstanceName,
+      );
+      if (realDigits) {
+        // Salva o mapeamento descoberto pela API para próximas vezes
+        await supabase
+          .from("lid_mappings")
+          .upsert({ lid: lidKey, phone: `+${realDigits}` }, { onConflict: "lid" });
+      }
+    }
+
     if (realDigits) {
       const realPhone = `+${realDigits}`;
       console.log(`Resolved @lid ${incoming.lidDigits} to real phone ${realPhone}`);
