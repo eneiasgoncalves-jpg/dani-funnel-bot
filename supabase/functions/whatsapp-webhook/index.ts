@@ -349,7 +349,10 @@ function extractIncomingMessages(payload: JsonRecord): ExtractedMessage[] {
     })
     .filter(
       (message) =>
-        Boolean(message.phone) && !message.remoteJid.endsWith("@g.us") && !message.remoteJid.includes("broadcast"),
+        Boolean(message.phone) &&
+        !message.remoteJid.endsWith("@g.us") &&
+        !message.remoteJid.includes("broadcast") &&
+        !message.isLid,
     );
 }
 
@@ -597,6 +600,31 @@ async function processIncomingMessage(params: {
 
   if (!incoming.phone) {
     return { status: "ignored", reason: "sender_not_found", messageId: incoming.messageId };
+  }
+
+  // Deduplicação por messageId — Evolution API v2.3.1 entrega a mesma mensagem
+  // duas vezes (uma com @lid, outra com número real). Evita processar duplicata.
+  if (incoming.messageId) {
+    const { data: alreadyProcessed } = await supabase
+      .from("processed_messages")
+      .select("id")
+      .eq("message_id", incoming.messageId)
+      .maybeSingle();
+
+    if (alreadyProcessed) {
+      return { status: "skipped_duplicate", messageId: incoming.messageId };
+    }
+
+    const { error: insertProcessedError } = await supabase
+      .from("processed_messages")
+      .insert({ message_id: incoming.messageId, phone: incoming.phone });
+
+    if (insertProcessedError && !String(insertProcessedError.message || "").includes("duplicate")) {
+      console.warn(`[DEDUP] Failed to mark message ${incoming.messageId} processed:`, insertProcessedError.message);
+    } else if (insertProcessedError) {
+      // Race: outro worker já inseriu. Tratar como duplicata.
+      return { status: "skipped_duplicate", messageId: incoming.messageId };
+    }
   }
 
   let phone = incoming.phone;
