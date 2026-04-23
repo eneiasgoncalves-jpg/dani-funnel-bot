@@ -3,7 +3,8 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 const AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
@@ -215,9 +216,10 @@ function buildMessageCandidates(payload: JsonRecord): JsonRecord[] {
       ...dataRecord,
       ...messageItem,
       key: { ...asRecord(dataRecord.key), ...asRecord(messageItem.key) },
-      message: Object.keys(asRecord(messageItem.message)).length > 0
-        ? asRecord(messageItem.message)
-        : asRecord(dataRecord.message),
+      message:
+        Object.keys(asRecord(messageItem.message)).length > 0
+          ? asRecord(messageItem.message)
+          : asRecord(dataRecord.message),
       pushName: getString(messageItem.pushName) || getString(dataRecord.pushName) || getString(payload.pushName),
       sender: getString(messageItem.sender) || getString(dataRecord.sender) || getString(payload.sender),
     }));
@@ -226,6 +228,7 @@ function buildMessageCandidates(payload: JsonRecord): JsonRecord[] {
   return [dataRecord];
 }
 
+// CORREÇÃO 1: busca por remoteJid em vez de id (compatível com Evolution API v2.3.1+)
 async function resolveLidToRealPhone(
   lidDigits: string,
   evolutionApiUrl: string,
@@ -234,26 +237,51 @@ async function resolveLidToRealPhone(
 ): Promise<string> {
   try {
     const baseUrl = evolutionApiUrl.replace(/\/+$/, "");
+    const lidJid = `${lidDigits}@lid`;
+
+    // Tenta primeiro por remoteJid (v2.3.1+)
     const res = await fetch(`${baseUrl}/chat/findContacts/${evolutionInstanceName}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: evolutionApiKey },
-      body: JSON.stringify({ where: { id: `${lidDigits}@lid` } }),
+      body: JSON.stringify({ where: { remoteJid: lidJid } }),
     });
+
     if (!res.ok) {
-      console.warn("findContacts non-OK:", res.status, await res.text());
+      console.warn("findContacts (remoteJid) non-OK:", res.status, await res.text());
       return "";
     }
+
     const data = await res.json();
-    const arr = Array.isArray(data) ? data : [];
+    let arr = Array.isArray(data) ? data : [];
+
+    // Fallback: tenta por id caso remoteJid não retorne resultado
+    if (arr.length === 0) {
+      const res2 = await fetch(`${baseUrl}/chat/findContacts/${evolutionInstanceName}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: evolutionApiKey },
+        body: JSON.stringify({ where: { id: lidJid } }),
+      });
+      if (res2.ok) {
+        const data2 = await res2.json();
+        arr = Array.isArray(data2) ? data2 : [];
+      }
+    }
+
     for (const c of arr) {
-      const candidates = [c?.remoteJid, c?.jid, c?.id];
+      const candidates = [c?.remoteJid, c?.jid, c?.id, c?.senderPn];
       for (const cand of candidates) {
         if (typeof cand === "string" && cand.includes("@s.whatsapp.net")) {
           const realDigits = cand.replace(/@.+$/, "").replace(/\D/g, "");
           if (realDigits) return realDigits;
         }
       }
+      // Tenta campo phoneNumber direto
+      if (typeof c?.phoneNumber === "string" && c.phoneNumber) {
+        const realDigits = c.phoneNumber.replace(/\D/g, "");
+        if (realDigits) return realDigits;
+      }
     }
+
     return "";
   } catch (e) {
     console.warn("resolveLidToRealPhone error:", e);
@@ -269,20 +297,14 @@ function extractIncomingMessages(payload: JsonRecord): ExtractedMessage[] {
   return buildMessageCandidates(payload)
     .map((candidate) => {
       const key = asRecord(candidate.key);
-      const senderPn =
-        getString(key.senderPn) ||
-        getString(candidate.senderPn) ||
-        getString(dataRecord.senderPn);
-      const rawRemoteJid =
-        getString(key.remoteJid) ||
-        getString(candidate.remoteJid);
+      const senderPn = getString(key.senderPn) || getString(candidate.senderPn) || getString(dataRecord.senderPn);
+      const rawRemoteJid = getString(key.remoteJid) || getString(candidate.remoteJid);
       const isLid = rawRemoteJid.includes("@lid");
       const lidDigits = isLid ? rawRemoteJid.replace(/@.+$/, "").replace(/\D/g, "") : "";
 
       // For routing replies: prefer real phone if available
-      const replyTarget = isLid && senderPn
-        ? senderPn.replace(/\D/g, "")
-        : rawRemoteJid.replace(/@.+$/, "").replace(/\D/g, "");
+      const replyTarget =
+        isLid && senderPn ? senderPn.replace(/\D/g, "") : rawRemoteJid.replace(/@.+$/, "").replace(/\D/g, "");
 
       // Initial phone (may be lid; resolved later in processIncomingMessage)
       const phoneSource = isLid && senderPn ? senderPn : rawRemoteJid;
@@ -291,10 +313,7 @@ function extractIncomingMessages(payload: JsonRecord): ExtractedMessage[] {
 
       const messageText = extractMessageText(asRecord(candidate.message));
       const pushName =
-        getString(candidate.pushName) ||
-        getString(dataRecord.pushName) ||
-        getString(payload.pushName) ||
-        phone;
+        getString(candidate.pushName) || getString(dataRecord.pushName) || getString(payload.pushName) || phone;
 
       return {
         messageId: getString(key.id) || crypto.randomUUID(),
@@ -307,7 +326,10 @@ function extractIncomingMessages(payload: JsonRecord): ExtractedMessage[] {
         lidDigits,
       };
     })
-    .filter((message) => Boolean(message.phone) && !message.remoteJid.endsWith("@g.us") && !message.remoteJid.includes("broadcast"));
+    .filter(
+      (message) =>
+        Boolean(message.phone) && !message.remoteJid.endsWith("@g.us") && !message.remoteJid.includes("broadcast"),
+    );
 }
 
 async function findOrCreateLead(supabase: any, phone: string, pushName: string) {
@@ -359,18 +381,11 @@ async function findOrCreateLead(supabase: any, phone: string, pushName: string) 
   return newLead as LeadRow;
 }
 
-async function saveMessage(
-  supabase: any,
-  leadId: string,
-  sender: "client" | "ai",
-  text: string,
-  evolutionId?: string,
-) {
+async function saveMessage(supabase: any, leadId: string, sender: "client" | "ai", text: string) {
   const { error } = await supabase.from("messages").insert({
     lead_id: leadId,
     sender,
     text,
-    ...(evolutionId ? { evolution_id: evolutionId } : {}),
   });
 
   if (error) {
@@ -379,11 +394,7 @@ async function saveMessage(
 }
 
 async function getAutoAttendanceEnabled(supabase: any) {
-  const { data, error } = await supabase
-    .from("settings")
-    .select("value")
-    .eq("key", "auto_attendance")
-    .maybeSingle();
+  const { data, error } = await supabase.from("settings").select("value").eq("key", "auto_attendance").maybeSingle();
 
   if (error) {
     throw new Error(`Erro ao buscar configuração de atendimento automático: ${error.message}`);
@@ -392,12 +403,7 @@ async function getAutoAttendanceEnabled(supabase: any) {
   return data?.value === true;
 }
 
-async function buildAiReply(
-  supabase: any,
-  lead: LeadRow,
-  phone: string,
-  lovableApiKey: string,
-) {
+async function buildAiReply(supabase: any, lead: LeadRow, phone: string, lovableApiKey: string) {
   const { data: history, error: historyError } = await supabase
     .from("messages")
     .select("sender, text")
@@ -424,10 +430,7 @@ async function buildAiReply(
     },
     body: JSON.stringify({
       model: "google/gemini-3-flash-preview",
-      messages: [
-        { role: "system", content: `${SYSTEM_PROMPT}\n\n${context}` },
-        ...messages,
-      ],
+      messages: [{ role: "system", content: `${SYSTEM_PROMPT}\n\n${context}` }, ...messages],
       tools: [
         {
           type: "function",
@@ -444,8 +447,14 @@ async function buildAiReply(
                 children_age: { type: "string" },
                 children_count: { type: "number" },
                 interest: { type: "string" },
-                new_status: { type: "string", enum: ["novo", "analise", "proposta", "contra_proposta", "fechado", "perdido"] },
-                tags: { type: "array", items: { type: "string", enum: ["quente", "duvida", "sensivel_preco", "frio"] } },
+                new_status: {
+                  type: "string",
+                  enum: ["novo", "analise", "proposta", "contra_proposta", "fechado", "perdido"],
+                },
+                tags: {
+                  type: "array",
+                  items: { type: "string", enum: ["quente", "duvida", "sensivel_preco", "frio"] },
+                },
               },
             },
           },
@@ -505,9 +514,7 @@ async function buildAiReply(
 }
 
 async function sendWhatsappReply(phone: string, text: string, url: string, apiKey: string, instanceName: string) {
-  // Evolution expects digits only for real numbers; for @lid identifiers use the full lid jid.
   const digits = phone.replace(/\D/g, "");
-  // Brazilian numbers fit in <=13 digits. Anything longer is a @lid identifier.
   const number = digits.length > 13 ? `${digits}@lid` : digits;
   const baseUrl = url.replace(/\/+$/, "");
   const response = await fetch(`${baseUrl}/message/sendText/${instanceName}`, {
@@ -530,17 +537,25 @@ async function sendWhatsappReply(phone: string, text: string, url: string, apiKe
   return response.json();
 }
 
+// CORREÇÃO 2: busca por variantes do número para evitar miss no merge
 async function mergeLidLeadIntoReal(supabase: any, lidPhone: string, realPhone: string) {
-  // If a lead exists for the @lid phone and another for the real phone, merge messages.
-  const { data: lidLead } = await supabase.from("leads").select("id, name").eq("phone", lidPhone).maybeSingle();
+  if (lidPhone === realPhone) return;
+
+  const lidVariants = normalizeLeadPhone(lidPhone);
+  const realVariants = normalizeLeadPhone(realPhone);
+
+  const { data: lidLead } = await supabase.from("leads").select("id, name").in("phone", lidVariants).maybeSingle();
+
   if (!lidLead) return;
-  const { data: realLead } = await supabase.from("leads").select("id, name").eq("phone", realPhone).maybeSingle();
+
+  const { data: realLead } = await supabase.from("leads").select("id, name").in("phone", realVariants).maybeSingle();
+
   if (realLead) {
-    // Move messages from lid lead to real lead, then delete lid lead.
+    console.log(`Merging lid lead ${lidLead.id} into real lead ${realLead.id}`);
     await supabase.from("messages").update({ lead_id: realLead.id }).eq("lead_id", lidLead.id);
     await supabase.from("leads").delete().eq("id", lidLead.id);
   } else {
-    // Just update the lid lead's phone to the real phone.
+    console.log(`Updating lid lead ${lidLead.id} phone from ${lidPhone} to ${realPhone}`);
     await supabase.from("leads").update({ phone: realPhone }).eq("id", lidLead.id);
   }
 }
@@ -563,32 +578,27 @@ async function processIncomingMessage(params: {
     return { status: "ignored", reason: "sender_not_found", messageId: incoming.messageId };
   }
 
-  // Deduplicate: check if this Evolution messageId was already processed
-  const { data: existingMsg } = await supabase
-    .from("messages")
-    .select("id")
-    .eq("evolution_id", incoming.messageId)
-    .maybeSingle();
-  if (existingMsg) {
-    console.log(`Skipping duplicate message ${incoming.messageId}`);
-    return { status: "duplicate", messageId: incoming.messageId };
-  }
-
   let phone = incoming.phone;
   let replyTarget = incoming.remoteJid;
 
-  // If incoming is a @lid (no senderPn), try to resolve to real phone
+  // Se é @lid sem senderPn, tenta resolver para número real
   if (incoming.isLid && incoming.lidDigits) {
-    const realDigits = await resolveLidToRealPhone(incoming.lidDigits, evolutionApiUrl, evolutionApiKey, evolutionInstanceName);
+    const realDigits = await resolveLidToRealPhone(
+      incoming.lidDigits,
+      evolutionApiUrl,
+      evolutionApiKey,
+      evolutionInstanceName,
+    );
     if (realDigits) {
       const realPhone = `+${realDigits}`;
       console.log(`Resolved @lid ${incoming.lidDigits} to real phone ${realPhone}`);
-      // Merge any existing lid-based lead into the real-phone lead
       await mergeLidLeadIntoReal(supabase, phone, realPhone);
       phone = realPhone;
       replyTarget = realDigits;
     } else {
-      console.warn(`Could not resolve @lid ${incoming.lidDigits} to real phone; keeping lid as identifier`);
+      // CORREÇÃO 3: bloqueia criação de lead duplicado quando LID não resolve
+      console.warn(`Could not resolve @lid ${incoming.lidDigits} — skipping to avoid duplicate lead`);
+      return { status: "skipped_unresolved_lid", messageId: incoming.messageId };
     }
   }
 
@@ -598,7 +608,7 @@ async function processIncomingMessage(params: {
     return { status: "lead_saved_without_text", leadId: lead.id, messageId: incoming.messageId };
   }
 
-  await saveMessage(supabase, lead.id, "client", incoming.text, incoming.messageId);
+  await saveMessage(supabase, lead.id, "client", incoming.text);
 
   const autoAttendanceEnabled = await getAutoAttendanceEnabled(supabase);
   if (!autoAttendanceEnabled) {
@@ -610,7 +620,7 @@ async function processIncomingMessage(params: {
     return { status: "ai_disabled_for_lead", leadId: lead.id, messageId: incoming.messageId };
   }
 
-  if (TRANSFERRED_STATUSES.includes(lead.status as typeof TRANSFERRED_STATUSES[number])) {
+  if (TRANSFERRED_STATUSES.includes(lead.status as (typeof TRANSFERRED_STATUSES)[number])) {
     return { status: "already_transferred", leadId: lead.id, messageId: incoming.messageId };
   }
 
@@ -633,7 +643,14 @@ serve(async (req) => {
   const EVOLUTION_API_KEY = Deno.env.get("EVOLUTION_API_KEY");
   const EVOLUTION_INSTANCE_NAME = Deno.env.get("EVOLUTION_INSTANCE_NAME")?.trim();
 
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !LOVABLE_API_KEY || !EVOLUTION_API_URL || !EVOLUTION_API_KEY || !EVOLUTION_INSTANCE_NAME) {
+  if (
+    !SUPABASE_URL ||
+    !SUPABASE_SERVICE_ROLE_KEY ||
+    !LOVABLE_API_KEY ||
+    !EVOLUTION_API_URL ||
+    !EVOLUTION_API_KEY ||
+    !EVOLUTION_INSTANCE_NAME
+  ) {
     return jsonResponse({ error: "Missing required environment variables" }, 500);
   }
 
@@ -672,9 +689,7 @@ serve(async (req) => {
     );
 
     const edgeRuntime = (globalThis as any).EdgeRuntime;
-    const waitUntil = typeof edgeRuntime?.waitUntil === "function"
-      ? edgeRuntime.waitUntil.bind(edgeRuntime)
-      : null;
+    const waitUntil = typeof edgeRuntime?.waitUntil === "function" ? edgeRuntime.waitUntil.bind(edgeRuntime) : null;
 
     if (waitUntil) {
       waitUntil(processAll);
@@ -685,7 +700,7 @@ serve(async (req) => {
     const processed = results.filter((result) => result.status === "fulfilled").length;
     const failed = results
       .filter((result) => result.status === "rejected")
-      .map((result) => result.status === "rejected" ? String(result.reason) : "");
+      .map((result) => (result.status === "rejected" ? String(result.reason) : ""));
 
     return jsonResponse(
       {
