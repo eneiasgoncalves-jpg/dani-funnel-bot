@@ -175,6 +175,24 @@ export type Database = {
         }
         Relationships: []
       }
+      lid_mappings: {
+        Row: {
+          created_at: string
+          lid: string
+          phone: string
+        }
+        Insert: {
+          created_at?: string
+          lid: string
+          phone: string
+        }
+        Update: {
+          created_at?: string
+          lid?: string
+          phone?: string
+        }
+        Relationships: []
+      }
       messages: {
         Row: {
           created_at: string
