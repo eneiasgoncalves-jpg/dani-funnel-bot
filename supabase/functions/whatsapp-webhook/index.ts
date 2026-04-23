@@ -289,7 +289,12 @@ async function resolveLidToRealPhone(
   }
 }
 
-type ExtractedMessage = IncomingMessage & { isLid: boolean; lidDigits: string };
+type ExtractedMessage = IncomingMessage & {
+  isLid: boolean;
+  lidDigits: string;
+  previousRemoteJid: string;
+  rawRemoteJid: string;
+};
 
 function extractIncomingMessages(payload: JsonRecord): ExtractedMessage[] {
   const dataRecord = asRecord(payload.data);
