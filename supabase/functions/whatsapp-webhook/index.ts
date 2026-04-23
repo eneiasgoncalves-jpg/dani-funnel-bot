@@ -300,6 +300,7 @@ function extractIncomingMessages(payload: JsonRecord): ExtractedMessage[] {
       const key = asRecord(candidate.key);
       const senderPn = getString(key.senderPn) || getString(candidate.senderPn) || getString(dataRecord.senderPn);
       const rawRemoteJid = getString(key.remoteJid) || getString(candidate.remoteJid);
+      const previousRemoteJid = getString(key.previousRemoteJid) || getString(candidate.previousRemoteJid);
       const isLid = rawRemoteJid.includes("@lid");
       const lidDigits = isLid ? rawRemoteJid.replace(/@.+$/, "").replace(/\D/g, "") : "";
 
@@ -337,6 +338,8 @@ function extractIncomingMessages(payload: JsonRecord): ExtractedMessage[] {
         fromMe: key.fromMe === true || candidate.fromMe === true,
         isLid: stillUnresolved,
         lidDigits: stillUnresolved ? lidDigits : "",
+        previousRemoteJid,
+        rawRemoteJid,
       };
     })
     .filter(
