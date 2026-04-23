@@ -228,6 +228,27 @@ export type Database = {
           },
         ]
       }
+      processed_messages: {
+        Row: {
+          created_at: string
+          id: string
+          message_id: string
+          phone: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          message_id: string
+          phone?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          message_id?: string
+          phone?: string | null
+        }
+        Relationships: []
+      }
       settings: {
         Row: {
           key: string
@@ -251,7 +272,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      cleanup_old_processed_messages: { Args: never; Returns: undefined }
     }
     Enums: {
       lead_status:
