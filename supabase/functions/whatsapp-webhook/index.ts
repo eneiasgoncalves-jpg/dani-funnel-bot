@@ -293,6 +293,7 @@ type ExtractedMessage = IncomingMessage & { isLid: boolean; lidDigits: string };
 
 function extractIncomingMessages(payload: JsonRecord): ExtractedMessage[] {
   const dataRecord = asRecord(payload.data);
+  const payloadSender = getString(payload.sender);
 
   return buildMessageCandidates(payload)
     .map((candidate) => {
@@ -302,14 +303,26 @@ function extractIncomingMessages(payload: JsonRecord): ExtractedMessage[] {
       const isLid = rawRemoteJid.includes("@lid");
       const lidDigits = isLid ? rawRemoteJid.replace(/@.+$/, "").replace(/\D/g, "") : "";
 
-      // For routing replies: prefer real phone if available
-      const replyTarget =
-        isLid && senderPn ? senderPn.replace(/\D/g, "") : rawRemoteJid.replace(/@.+$/, "").replace(/\D/g, "");
+      let phone = "";
+      let replyTarget = rawRemoteJid.replace(/@.+$/, "").replace(/\D/g, "");
 
-      // Initial phone (may be lid; resolved later in processIncomingMessage)
-      const phoneSource = isLid && senderPn ? senderPn : rawRemoteJid;
-      const phoneDigits = phoneSource.replace(/@.+$/, "").replace(/\D/g, "");
-      const phone = phoneDigits ? `+${phoneDigits}` : "";
+      if (isLid) {
+        if (senderPn) {
+          const digits = senderPn.replace(/@.+$/, "").replace(/\D/g, "");
+          phone = `+${digits}`;
+          replyTarget = digits;
+        } else if (payloadSender && payloadSender.includes("@s.whatsapp.net")) {
+          const digits = payloadSender.replace(/@.+$/, "").replace(/\D/g, "");
+          phone = `+${digits}`;
+          replyTarget = digits;
+          console.log(`[LID] Using payload.sender ${payloadSender} for @lid ${rawRemoteJid}`);
+        }
+      } else {
+        const digits = rawRemoteJid.replace(/@.+$/, "").replace(/\D/g, "");
+        phone = digits ? `+${digits}` : "";
+      }
+
+      const stillUnresolved = isLid && !phone;
 
       const messageText = extractMessageText(asRecord(candidate.message));
       const pushName =
@@ -322,8 +335,8 @@ function extractIncomingMessages(payload: JsonRecord): ExtractedMessage[] {
         pushName,
         text: messageText,
         fromMe: key.fromMe === true || candidate.fromMe === true,
-        isLid: isLid && !senderPn,
-        lidDigits,
+        isLid: stillUnresolved,
+        lidDigits: stillUnresolved ? lidDigits : "",
       };
     })
     .filter(
