@@ -427,7 +427,7 @@ async function buildAiReply(supabase: any, lead: LeadRow, phone: string, lovable
     .select("sender, text")
     .eq("lead_id", lead.id)
     .order("created_at", { ascending: true })
-    .limit(20);
+    .limit(100);
 
   if (historyError) {
     throw new Error(`Erro ao buscar histórico: ${historyError.message}`);
