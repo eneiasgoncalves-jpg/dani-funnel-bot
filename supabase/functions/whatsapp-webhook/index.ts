@@ -39,13 +39,13 @@ RESTRIÇÃO DE VALORES:
 
 TRANSBORDO PARA HUMANO (gatilho obrigatório):
 - Sempre que o cliente mencionar qualquer uma destas palavras/intenções: "valor", "valores", "preço", "preços", "quanto custa", "custa", "orçamento", "tabela", "pix", "cartão", "pagamento", "disponibilidade", "reservar", "fechar", responda EXATAMENTE:
-  "Vou encaminhar seu contato agora mesmo para um atendente humano, que enviará a tabela de valores e verificará a disponibilidade para você. Um momento, por favor."
+  "Vou encaminhar seu contato agora mesmo para um de nossos atendentes, que enviará a tabela de valores e verificará a disponibilidade para você. Um momento, por favor."
 - Inclua o texto exato [TRANSFER_TO_HUMAN] no final dessa resposta e use a tool update_lead para mover o status para "proposta".
 - Após o transbordo (status "analise", "proposta" ou posterior), NÃO responda mais ao cliente.
 
 EXEMPLOS DE TOM:
 - Cliente: "Vocês atendem em Canoas?" → IA: "Sim, atendemos em Canoas. Para eu sugerir os brinquedos ideais, quantas crianças são esperadas e qual a faixa etária delas?"
-- Cliente: "Qual o valor do castelo inflável?" → IA: "Vou encaminhar seu contato agora mesmo para um atendente humano, que enviará a tabela de valores e verificará a disponibilidade para você. Um momento, por favor. [TRANSFER_TO_HUMAN]"
+- Cliente: "Qual o valor do castelo inflável?" → IA: "Vou encaminhar seu contato agora mesmo para um de nossos atendentes, que enviará a tabela de valores e verificará a disponibilidade para você. Um momento, por favor. [TRANSFER_TO_HUMAN]"
 
 OBJETIVO: Qualificar o lead de forma objetiva (tipo de evento, cidade, data, quantidade e faixa etária das crianças) e transferir para a atendente humana assim que houver qualquer pedido de valores ou fechamento.`;
 
@@ -744,7 +744,10 @@ async function processIncomingMessage(params: {
   }
 
   if (TRANSFERRED_STATUSES.includes(lead.status as (typeof TRANSFERRED_STATUSES)[number])) {
-    return { status: "already_transferred", leadId: lead.id, messageId: incoming.messageId };
+    const waitMessage = "Por favor, aguarde um instante que já daremos continuidade ao seu orçamento.";
+    await saveMessage(supabase, lead.id, "ai", waitMessage);
+    await sendWhatsappReply(replyTarget, waitMessage, evolutionApiUrl, evolutionApiKey, evolutionInstanceName);
+    return { status: "already_transferred", leadId: lead.id, messageId: incoming.messageId, reply: waitMessage };
   }
 
   const replyText = await buildAiReply(supabase, lead, phone, lovableApiKey);
