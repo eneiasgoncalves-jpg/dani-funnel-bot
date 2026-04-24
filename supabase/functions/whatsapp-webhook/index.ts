@@ -90,6 +90,7 @@ type LeadRow = {
   interest: string | null;
   status: string;
   tags: string[] | null;
+  ai_enabled?: boolean;
 };
 
 type IncomingMessage = {
