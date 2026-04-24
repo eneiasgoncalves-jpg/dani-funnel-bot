@@ -440,6 +440,18 @@ async function buildAiReply(supabase: any, lead: LeadRow, phone: string, lovable
 
   const context = `Contexto do lead: Nome: ${lead.name || "não informado"}, Telefone: ${phone}, Data do evento: ${lead.event_date || "não informada"}, Cidade: ${lead.city || "não informada"}, Bairro: ${lead.neighborhood || "não informado"}, Idade das crianças: ${lead.children_age || "não informada"}, Qtd crianças: ${lead.children_count || "não informada"}, Interesse: ${lead.interest || "não informado"}, Status: ${lead.status}`;
 
+  const systemContent = `${SYSTEM_PROMPT}\n\n${context}`;
+  const promptMessages = [{ role: "system", content: systemContent }, ...messages];
+  const totalChars = promptMessages.reduce((sum: number, m: { content: string }) => sum + (m.content?.length || 0), 0);
+  const clientMsgs = messages.filter((m: { role: string }) => m.role === "user").length;
+  const assistantMsgs = messages.filter((m: { role: string }) => m.role === "assistant").length;
+  console.log(
+    `[AI_CONTEXT] lead_id=${lead.id} phone=${phone} name="${lead.name || ""}" status=${lead.status} ` +
+    `history_count=${messages.length} (client=${clientMsgs}, assistant=${assistantMsgs}) ` +
+    `system_chars=${systemContent.length} total_prompt_chars=${totalChars} ` +
+    `approx_tokens=${Math.ceil(totalChars / 4)} messages_in_payload=${promptMessages.length}`
+  );
+
   const aiResponse = await fetch(AI_GATEWAY_URL, {
     method: "POST",
     headers: {
@@ -448,7 +460,7 @@ async function buildAiReply(supabase: any, lead: LeadRow, phone: string, lovable
     },
     body: JSON.stringify({
       model: "google/gemini-3-flash-preview",
-      messages: [{ role: "system", content: `${SYSTEM_PROMPT}\n\n${context}` }, ...messages],
+      messages: promptMessages,
       tools: [
         {
           type: "function",
