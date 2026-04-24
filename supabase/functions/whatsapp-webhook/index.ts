@@ -442,9 +442,9 @@ async function buildAiReply(supabase: any, lead: LeadRow, phone: string, lovable
 
   const systemContent = `${SYSTEM_PROMPT}\n\n${context}`;
   const promptMessages = [{ role: "system", content: systemContent }, ...messages];
-  const totalChars = promptMessages.reduce((sum, m) => sum + (m.content?.length || 0), 0);
-  const clientMsgs = messages.filter((m) => m.role === "user").length;
-  const assistantMsgs = messages.filter((m) => m.role === "assistant").length;
+  const totalChars = promptMessages.reduce((sum: number, m: { content: string }) => sum + (m.content?.length || 0), 0);
+  const clientMsgs = messages.filter((m: { role: string }) => m.role === "user").length;
+  const assistantMsgs = messages.filter((m: { role: string }) => m.role === "assistant").length;
   console.log(
     `[AI_CONTEXT] lead_id=${lead.id} phone=${phone} name="${lead.name || ""}" status=${lead.status} ` +
     `history_count=${messages.length} (client=${clientMsgs}, assistant=${assistantMsgs}) ` +
