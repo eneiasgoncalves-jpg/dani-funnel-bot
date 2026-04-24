@@ -421,6 +421,82 @@ async function getAutoAttendanceEnabled(supabase: any) {
   return data?.value === true;
 }
 
+function buildLeadContext(lead: LeadRow, phone: string) {
+  return `Contexto do lead: Nome: ${lead.name || "não informado"}, Telefone: ${phone}, Data do evento: ${lead.event_date || "não informada"}, Cidade: ${lead.city || "não informada"}, Bairro: ${lead.neighborhood || "não informado"}, Idade das crianças: ${lead.children_age || "não informada"}, Qtd crianças: ${lead.children_count || "não informada"}, Interesse: ${lead.interest || "não informado"}, Status: ${lead.status}`;
+}
+
+async function requestAiCompletion(params: {
+  promptMessages: Array<{ role: string; content: string }>;
+  lovableApiKey: string;
+  withTools: boolean;
+}) {
+  const { promptMessages, lovableApiKey, withTools } = params;
+
+  const aiResponse = await fetch(AI_GATEWAY_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${lovableApiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "google/gemini-3-flash-preview",
+      messages: promptMessages,
+      ...(withTools
+        ? {
+            tools: [
+              {
+                type: "function",
+                function: {
+                  name: "update_lead",
+                  description: "Update lead info extracted from conversation",
+                  parameters: {
+                    type: "object",
+                    properties: {
+                      name: { type: "string" },
+                      event_date: { type: "string", description: "YYYY-MM-DD format" },
+                      city: { type: "string" },
+                      neighborhood: { type: "string" },
+                      children_age: { type: "string" },
+                      children_count: { type: "number" },
+                      interest: { type: "string" },
+                      new_status: {
+                        type: "string",
+                        enum: ["novo", "analise", "proposta", "contra_proposta", "fechado", "perdido"],
+                      },
+                      tags: {
+                        type: "array",
+                        items: { type: "string", enum: ["quente", "duvida", "sensivel_preco", "frio"] },
+                      },
+                    },
+                  },
+                },
+              },
+            ],
+          }
+        : {}),
+    }),
+  });
+
+  if (!aiResponse.ok) {
+    const errorText = await aiResponse.text();
+    throw new Error(`AI gateway error [${aiResponse.status}]: ${errorText}`);
+  }
+
+  const aiData = await aiResponse.json();
+  const choice = aiData?.choices?.[0];
+  const content = getString(choice?.message?.content);
+  const toolCalls = Array.isArray(choice?.message?.tool_calls) ? choice.message.tool_calls : [];
+  const finishReason = getString(choice?.finish_reason);
+  const totalTokens = Number(aiData?.usage?.total_tokens || 0);
+
+  console.log(
+    `[AI_GATEWAY] with_tools=${withTools} finish_reason=${finishReason || "unknown"} ` +
+      `has_content=${content ? "yes" : "no"} tool_calls=${toolCalls.length} total_tokens=${totalTokens}`,
+  );
+
+  return { choice, content, toolCalls };
+}
+
 async function buildAiReply(supabase: any, lead: LeadRow, phone: string, lovableApiKey: string) {
   const { data: history, error: historyError } = await supabase
     .from("messages")
@@ -438,9 +514,8 @@ async function buildAiReply(supabase: any, lead: LeadRow, phone: string, lovable
     content: message.text,
   }));
 
-  const context = `Contexto do lead: Nome: ${lead.name || "não informado"}, Telefone: ${phone}, Data do evento: ${lead.event_date || "não informada"}, Cidade: ${lead.city || "não informada"}, Bairro: ${lead.neighborhood || "não informado"}, Idade das crianças: ${lead.children_age || "não informada"}, Qtd crianças: ${lead.children_count || "não informada"}, Interesse: ${lead.interest || "não informado"}, Status: ${lead.status}`;
-
-  const systemContent = `${SYSTEM_PROMPT}\n\n${context}`;
+  let currentLead = { ...lead };
+  const systemContent = `${SYSTEM_PROMPT}\n\n${buildLeadContext(currentLead, phone)}`;
   const promptMessages = [{ role: "system", content: systemContent }, ...messages];
   const totalChars = promptMessages.reduce((sum: number, m: { content: string }) => sum + (m.content?.length || 0), 0);
   const clientMsgs = messages.filter((m: { role: string }) => m.role === "user").length;
@@ -449,61 +524,19 @@ async function buildAiReply(supabase: any, lead: LeadRow, phone: string, lovable
     `[AI_CONTEXT] lead_id=${lead.id} phone=${phone} name="${lead.name || ""}" status=${lead.status} ` +
     `history_count=${messages.length} (client=${clientMsgs}, assistant=${assistantMsgs}) ` +
     `system_chars=${systemContent.length} total_prompt_chars=${totalChars} ` +
-    `approx_tokens=${Math.ceil(totalChars / 4)} messages_in_payload=${promptMessages.length}`
+    `approx_tokens=${Math.ceil(totalChars / 4)} messages_in_payload=${promptMessages.length}`,
   );
 
-  const aiResponse = await fetch(AI_GATEWAY_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${lovableApiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "google/gemini-3-flash-preview",
-      messages: promptMessages,
-      tools: [
-        {
-          type: "function",
-          function: {
-            name: "update_lead",
-            description: "Update lead info extracted from conversation",
-            parameters: {
-              type: "object",
-              properties: {
-                name: { type: "string" },
-                event_date: { type: "string", description: "YYYY-MM-DD format" },
-                city: { type: "string" },
-                neighborhood: { type: "string" },
-                children_age: { type: "string" },
-                children_count: { type: "number" },
-                interest: { type: "string" },
-                new_status: {
-                  type: "string",
-                  enum: ["novo", "analise", "proposta", "contra_proposta", "fechado", "perdido"],
-                },
-                tags: {
-                  type: "array",
-                  items: { type: "string", enum: ["quente", "duvida", "sensivel_preco", "frio"] },
-                },
-              },
-            },
-          },
-        },
-      ],
-    }),
+  const initialCompletion = await requestAiCompletion({
+    promptMessages,
+    lovableApiKey,
+    withTools: true,
   });
 
-  if (!aiResponse.ok) {
-    const errorText = await aiResponse.text();
-    throw new Error(`AI gateway error [${aiResponse.status}]: ${errorText}`);
-  }
+  let replyText = initialCompletion.content;
 
-  const aiData = await aiResponse.json();
-  const choice = aiData.choices?.[0];
-  let replyText = getString(choice?.message?.content) || "Desculpe, tive um problema. Pode repetir? 😊";
-
-  if (choice?.message?.tool_calls) {
-    for (const toolCall of choice.message.tool_calls) {
+  if (initialCompletion.toolCalls.length > 0) {
+    for (const toolCall of initialCompletion.toolCalls) {
       if (toolCall.function?.name !== "update_lead") continue;
 
       try {
@@ -524,11 +557,31 @@ async function buildAiReply(supabase: any, lead: LeadRow, phone: string, lovable
           if (updateError) {
             throw new Error(updateError.message);
           }
+          currentLead = { ...currentLead, ...(leadUpdate as Partial<LeadRow>) };
         }
       } catch (error) {
         console.error("Failed to parse/update lead from tool call:", error);
       }
     }
+  }
+
+  if (!replyText) {
+    console.warn(`[AI_GATEWAY] Empty content for lead ${lead.id}; retrying without tools`);
+
+    const retrySystemContent = `${SYSTEM_PROMPT}\n\n${buildLeadContext(currentLead, phone)}\n\nVocê já processou internamente qualquer atualização do lead. Agora responda ao cliente com uma única mensagem curta, em texto puro, sem mencionar ferramentas nem erros internos.`;
+    const retryMessages = [{ role: "system", content: retrySystemContent }, ...messages];
+    const retryCompletion = await requestAiCompletion({
+      promptMessages: retryMessages,
+      lovableApiKey,
+      withTools: false,
+    });
+
+    replyText = retryCompletion.content;
+  }
+
+  if (!replyText) {
+    console.warn(`[AI_GATEWAY] Still empty content for lead ${lead.id}; using safe fallback`);
+    replyText = "Olá! Pode me confirmar mais um detalhe para eu seguir com seu atendimento? 😊";
   }
 
   const transferToHuman = replyText.includes("[TRANSFER_TO_HUMAN]");
