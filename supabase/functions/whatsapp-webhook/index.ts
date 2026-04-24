@@ -744,7 +744,10 @@ async function processIncomingMessage(params: {
   }
 
   if (TRANSFERRED_STATUSES.includes(lead.status as (typeof TRANSFERRED_STATUSES)[number])) {
-    return { status: "already_transferred", leadId: lead.id, messageId: incoming.messageId };
+    const waitMessage = "Por favor, aguarde um instante que já daremos continuidade ao seu orçamento.";
+    await saveMessage(supabase, lead.id, "ai", waitMessage);
+    await sendWhatsappReply(replyTarget, waitMessage, evolutionApiUrl, evolutionApiKey, evolutionInstanceName);
+    return { status: "already_transferred", leadId: lead.id, messageId: incoming.messageId, reply: waitMessage };
   }
 
   const replyText = await buildAiReply(supabase, lead, phone, lovableApiKey);
