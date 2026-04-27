@@ -1,11 +1,9 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   const url = Deno.env.get("EVOLUTION_API_URL")!.replace(/\/+$/, "");
@@ -61,6 +59,16 @@ serve(async (req) => {
       });
       result.webhookSet = { status: r4.status, body: (await r4.text()).slice(0, 2000) };
     } catch (e) { result.webhookSetError = String(e); }
+  }
+
+  if (action === "restart") {
+    try {
+      const r5 = await fetch(`${url}/instance/restart/${inst}`, {
+        method: "POST",
+        headers: { apikey: key },
+      });
+      result.restart = { status: r5.status, body: (await r5.text()).slice(0, 1000) };
+    } catch (e) { result.restartError = String(e); }
   }
 
   return new Response(JSON.stringify(result, null, 2), {
