@@ -63,6 +63,16 @@ serve(async (req) => {
     } catch (e) { result.webhookSetError = String(e); }
   }
 
+  if (action === "restart") {
+    try {
+      const r5 = await fetch(`${url}/instance/restart/${inst}`, {
+        method: "POST",
+        headers: { apikey: key },
+      });
+      result.restart = { status: r5.status, body: (await r5.text()).slice(0, 1000) };
+    } catch (e) { result.restartError = String(e); }
+  }
+
   return new Response(JSON.stringify(result, null, 2), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
