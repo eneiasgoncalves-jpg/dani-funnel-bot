@@ -116,10 +116,17 @@ serve(async (req) => {
     const evoData = await evoResponse.json();
     console.log("Message sent via Evolution:", JSON.stringify(evoData));
 
+    const evolutionId =
+      evoData?.key?.id ||
+      evoData?.messageId ||
+      evoData?.id ||
+      null;
+
     await supabase.from("messages").insert({
       lead_id: leadId,
       sender: "ai",
       text,
+      evolution_id: evolutionId,
     });
 
     return new Response(JSON.stringify({ status: "sent", evolution: evoData }), {
