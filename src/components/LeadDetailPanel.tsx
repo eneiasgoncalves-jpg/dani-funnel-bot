@@ -1,9 +1,18 @@
 import { useState } from 'react';
 import { Lead, STATUS_CONFIG, TAG_CONFIG, CHANNEL_CONFIG, LeadStatus, STAGES } from '@/types/lead';
-import { X, Send, Phone, Calendar, MapPin, Users, MessageCircle, Pencil, UserPlus, Bot, BotOff } from 'lucide-react';
+import { X, Send, Phone, Calendar, MapPin, Users, MessageCircle, Pencil, UserPlus, Bot, BotOff, MoreVertical, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 import { EditLeadDialog } from './EditLeadDialog';
 import { ClienteDialog } from './ClienteDialog';
 
@@ -24,6 +33,23 @@ export function LeadDetailPanel({ lead, onClose, onMoveStatus, onSendMessage, on
     if (!newMessage.trim()) return;
     onSendMessage(lead.id, { sender: 'ai', text: newMessage });
     setNewMessage('');
+  };
+
+  const handleDeleteMessage = async (messageId: string, scope: 'me' | 'everyone') => {
+    try {
+      if (scope === 'everyone' && lead.channel === 'whatsapp') {
+        const { error } = await supabase.functions.invoke('delete-whatsapp-message', {
+          body: { messageId, scope },
+        });
+        if (error) throw error;
+        toast.success('Mensagem apagada para todos');
+      } else {
+        await supabase.from('messages').delete().eq('id', messageId);
+        toast.success('Mensagem removida');
+      }
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro ao excluir mensagem');
+    }
   };
 
   return (
@@ -118,8 +144,27 @@ export function LeadDetailPanel({ lead, onClose, onMoveStatus, onSendMessage, on
           <span className="text-xs font-semibold text-foreground">Conversa</span>
         </div>
         {lead.messages.map(msg => (
-          <div key={msg.id} className={`flex ${msg.sender === 'ai' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-sm ${
+          <div key={msg.id} className={`group flex items-start gap-1 ${msg.sender === 'ai' ? 'justify-end' : 'justify-start'}`}>
+            {msg.sender === 'ai' && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-muted-foreground hover:text-foreground">
+                    <MoreVertical className="w-3.5 h-3.5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="text-xs">
+                  <DropdownMenuItem onClick={() => handleDeleteMessage(msg.id, 'me')}>
+                    <Trash2 className="w-3.5 h-3.5 mr-2" /> Excluir para mim
+                  </DropdownMenuItem>
+                  {lead.channel === 'whatsapp' && (
+                    <DropdownMenuItem onClick={() => handleDeleteMessage(msg.id, 'everyone')}>
+                      <Trash2 className="w-3.5 h-3.5 mr-2" /> Excluir para todos
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+            <div className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-sm whitespace-pre-wrap break-words ${
               msg.sender === 'ai'
                 ? 'bg-primary text-primary-foreground rounded-br-md'
                 : 'bg-muted text-foreground rounded-bl-md'
@@ -129,19 +174,39 @@ export function LeadDetailPanel({ lead, onClose, onMoveStatus, onSendMessage, on
                 {msg.timestamp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
               </p>
             </div>
+            {msg.sender === 'client' && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-muted-foreground hover:text-foreground">
+                    <MoreVertical className="w-3.5 h-3.5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="text-xs">
+                  <DropdownMenuItem onClick={() => handleDeleteMessage(msg.id, 'me')}>
+                    <Trash2 className="w-3.5 h-3.5 mr-2" /> Excluir para mim
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
         ))}
       </div>
 
       {/* Input */}
       <div className="p-3 border-t border-border">
-        <div className="flex gap-2">
-          <Input
+        <div className="flex gap-2 items-end">
+          <Textarea
             value={newMessage}
             onChange={e => setNewMessage(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSend()}
-            placeholder="Digitar mensagem..."
-            className="text-sm"
+            onKeyDown={e => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
+            placeholder="Digitar mensagem... (Shift+Enter quebra linha)"
+            rows={3}
+            className="text-sm min-h-[60px] resize-none"
           />
           <Button onClick={handleSend} size="icon" className="shrink-0">
             <Send className="w-4 h-4" />
