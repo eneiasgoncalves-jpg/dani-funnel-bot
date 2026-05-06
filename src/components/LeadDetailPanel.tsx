@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Lead, STATUS_CONFIG, TAG_CONFIG, CHANNEL_CONFIG, LeadStatus, STAGES } from '@/types/lead';
-import { X, Send, Phone, Calendar, MapPin, Users, MessageCircle, Pencil, UserPlus, Bot, BotOff, MoreVertical, Trash2 } from 'lucide-react';
+import { X, Send, Phone, Calendar, MapPin, Users, MessageCircle, Pencil, UserPlus, Bot, BotOff, MoreVertical, Trash2, Paperclip, FileText, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
@@ -27,11 +27,55 @@ export function LeadDetailPanel({ lead, onClose, onMoveStatus, onSendMessage, on
   const [newMessage, setNewMessage] = useState('');
   const [editOpen, setEditOpen] = useState(false);
   const [clienteOpen, setClienteOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSend = () => {
     if (!newMessage.trim()) return;
     onSendMessage(lead.id, { sender: 'ai', text: newMessage });
     setNewMessage('');
+  };
+
+  const detectMediaType = (mime: string): 'image' | 'video' | 'audio' | 'document' => {
+    if (mime.startsWith('image/')) return 'image';
+    if (mime.startsWith('video/')) return 'video';
+    if (mime.startsWith('audio/')) return 'audio';
+    return 'document';
+  };
+
+  const handleFilePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (file.size > 20 * 1024 * 1024) {
+      toast.error('Arquivo muito grande (máx 20MB)');
+      return;
+    }
+    setUploading(true);
+    try {
+      const ext = file.name.split('.').pop() || 'bin';
+      const path = `${lead.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from('chat-attachments')
+        .upload(path, file, { contentType: file.type, upsert: false });
+      if (upErr) throw upErr;
+      const { data: pub } = supabase.storage.from('chat-attachments').getPublicUrl(path);
+      const mediaType = detectMediaType(file.type);
+      await (onSendMessage as any)(lead.id, {
+        sender: 'ai',
+        text: newMessage,
+        mediaUrl: pub.publicUrl,
+        mediaType,
+        mediaMime: file.type,
+        fileName: file.name,
+      });
+      setNewMessage('');
+      toast.success('Arquivo enviado');
+    } catch (err: any) {
+      toast.error(err?.message || 'Falha no envio');
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleDeleteMessage = async (messageId: string, scope: 'me' | 'everyone') => {
@@ -168,6 +212,27 @@ export function LeadDetailPanel({ lead, onClose, onMoveStatus, onSendMessage, on
                 ? 'bg-primary text-primary-foreground rounded-br-md'
                 : 'bg-muted text-foreground rounded-bl-md'
             }`}>
+              {msg.mediaUrl && msg.mediaType === 'image' && (
+                <a href={msg.mediaUrl} target="_blank" rel="noreferrer">
+                  <img src={msg.mediaUrl} alt={msg.fileName || 'imagem'} className="rounded-lg mb-1 max-h-60 object-cover" />
+                </a>
+              )}
+              {msg.mediaUrl && msg.mediaType === 'video' && (
+                <video src={msg.mediaUrl} controls className="rounded-lg mb-1 max-h-60" />
+              )}
+              {msg.mediaUrl && msg.mediaType === 'audio' && (
+                <audio src={msg.mediaUrl} controls className="mb-1 w-full" />
+              )}
+              {msg.mediaUrl && (msg.mediaType === 'document' || !msg.mediaType) && (
+                <a
+                  href={msg.mediaUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-2 underline mb-1"
+                >
+                  <FileText className="w-4 h-4" /> {msg.fileName || 'arquivo'}
+                </a>
+              )}
               {msg.text}
               <p className={`text-[10px] mt-1 ${msg.sender === 'ai' ? 'text-primary-foreground/60' : 'text-muted-foreground'}`}>
                 {msg.timestamp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
@@ -194,6 +259,22 @@ export function LeadDetailPanel({ lead, onClose, onMoveStatus, onSendMessage, on
       {/* Input */}
       <div className="p-3 border-t border-border">
         <div className="flex gap-2 items-end">
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            onChange={handleFilePick}
+          />
+          <Button
+            variant="ghost"
+            size="icon"
+            className="shrink-0"
+            disabled={uploading}
+            onClick={() => fileInputRef.current?.click()}
+            title="Anexar arquivo"
+          >
+            {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
+          </Button>
           <Textarea
             value={newMessage}
             onChange={e => setNewMessage(e.target.value)}
