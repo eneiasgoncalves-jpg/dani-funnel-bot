@@ -9,6 +9,10 @@ export interface ChatMessage {
   sender: 'client' | 'ai';
   text: string;
   timestamp: Date;
+  mediaUrl?: string | null;
+  mediaType?: 'image' | 'video' | 'audio' | 'document' | null;
+  mediaMime?: string | null;
+  fileName?: string | null;
 }
 
 export interface Lead {

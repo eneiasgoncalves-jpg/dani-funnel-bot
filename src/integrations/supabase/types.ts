@@ -197,24 +197,36 @@ export type Database = {
         Row: {
           created_at: string
           evolution_id: string | null
+          file_name: string | null
           id: string
           lead_id: string
+          media_mime: string | null
+          media_type: string | null
+          media_url: string | null
           sender: string
           text: string
         }
         Insert: {
           created_at?: string
           evolution_id?: string | null
+          file_name?: string | null
           id?: string
           lead_id: string
+          media_mime?: string | null
+          media_type?: string | null
+          media_url?: string | null
           sender: string
           text: string
         }
         Update: {
           created_at?: string
           evolution_id?: string | null
+          file_name?: string | null
           id?: string
           lead_id?: string
+          media_mime?: string | null
+          media_type?: string | null
+          media_url?: string | null
           sender?: string
           text?: string
         }
