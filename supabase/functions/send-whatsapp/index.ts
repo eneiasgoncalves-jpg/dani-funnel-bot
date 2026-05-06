@@ -63,10 +63,10 @@ serve(async (req) => {
   }
 
   try {
-    const { leadId, text } = await req.json();
+    const { leadId, text, mediaUrl, mediaType, mimeType, fileName } = await req.json();
 
-    if (!leadId || !text) {
-      return new Response(JSON.stringify({ error: "leadId and text are required" }), {
+    if (!leadId || (!text && !mediaUrl)) {
+      return new Response(JSON.stringify({ error: "leadId and text or mediaUrl are required" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -89,19 +89,44 @@ serve(async (req) => {
 
     const baseUrl = EVOLUTION_API_URL.replace(/\/+$/, "");
     const number = await resolveRecipient(lead.phone, baseUrl, EVOLUTION_API_KEY, EVOLUTION_INSTANCE_NAME);
-    const evolutionUrl = `${baseUrl}/message/sendText/${EVOLUTION_INSTANCE_NAME}`;
-    console.log("Sending to Evolution:", evolutionUrl, "number:", number);
 
+    let evolutionUrl: string;
+    let body: Record<string, unknown>;
+
+    if (mediaUrl) {
+      // Map our type to Evolution mediatype
+      const mt = mediaType === "image" ? "image"
+        : mediaType === "video" ? "video"
+        : mediaType === "audio" ? "audio"
+        : "document";
+
+      if (mt === "audio") {
+        evolutionUrl = `${baseUrl}/message/sendWhatsAppAudio/${EVOLUTION_INSTANCE_NAME}`;
+        body = { number, audio: mediaUrl };
+      } else {
+        evolutionUrl = `${baseUrl}/message/sendMedia/${EVOLUTION_INSTANCE_NAME}`;
+        body = {
+          number,
+          mediatype: mt,
+          mimetype: mimeType,
+          media: mediaUrl,
+          fileName: fileName || "arquivo",
+          caption: text || "",
+        };
+      }
+    } else {
+      evolutionUrl = `${baseUrl}/message/sendText/${EVOLUTION_INSTANCE_NAME}`;
+      body = { number, text };
+    }
+
+    console.log("Sending to Evolution:", evolutionUrl, "number:", number);
     const evoResponse = await fetch(evolutionUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         apikey: EVOLUTION_API_KEY,
       },
-      body: JSON.stringify({
-        number,
-        text,
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!evoResponse.ok) {
@@ -125,8 +150,12 @@ serve(async (req) => {
     await supabase.from("messages").insert({
       lead_id: leadId,
       sender: "ai",
-      text,
+      text: text || "",
       evolution_id: evolutionId,
+      media_url: mediaUrl || null,
+      media_type: mediaUrl ? (mediaType || "document") : null,
+      media_mime: mediaUrl ? (mimeType || null) : null,
+      file_name: mediaUrl ? (fileName || null) : null,
     });
 
     return new Response(JSON.stringify({ status: "sent", evolution: evoData }), {
