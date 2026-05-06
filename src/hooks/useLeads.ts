@@ -104,7 +104,14 @@ export function useLeads() {
     if (isWhatsApp && message.sender === 'ai') {
       // Send via Evolution API (edge function saves to DB too)
       const { error } = await supabase.functions.invoke('send-whatsapp', {
-        body: { leadId, text: message.text },
+        body: {
+          leadId,
+          text: message.text,
+          mediaUrl: message.mediaUrl || undefined,
+          mediaType: message.mediaType || undefined,
+          mimeType: message.mediaMime || undefined,
+          fileName: message.fileName || undefined,
+        },
       });
       if (error) {
         console.error('Failed to send WhatsApp message:', error);
@@ -116,7 +123,11 @@ export function useLeads() {
         lead_id: leadId,
         sender: message.sender,
         text: message.text,
-      });
+        media_url: message.mediaUrl || null,
+        media_type: message.mediaType || null,
+        media_mime: message.mediaMime || null,
+        file_name: message.fileName || null,
+      } as any);
     }
   }, [leads]);
 
