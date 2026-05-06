@@ -29,7 +29,7 @@ serve(async (req) => {
 
     const { data: msg } = await supabase
       .from("messages")
-      .select("id, lead_id, evolution_id, sender, leads(phone)")
+      .select("id, lead_id, evolution_id, sender")
       .eq("id", messageId)
       .maybeSingle();
 
@@ -54,7 +54,12 @@ serve(async (req) => {
         );
       }
 
-      const phone = (msg as any).leads?.phone || "";
+      const { data: leadRow } = await supabase
+        .from("leads")
+        .select("phone")
+        .eq("id", msg.lead_id)
+        .maybeSingle();
+      const phone = leadRow?.phone || "";
       const digits = phone.replace(/\D/g, "");
       const remoteJid = digits.length > 13 ? `${digits}@lid` : `${digits}@s.whatsapp.net`;
       const baseUrl = EVOLUTION_API_URL.replace(/\/+$/, "");
