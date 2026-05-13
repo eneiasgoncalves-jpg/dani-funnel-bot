@@ -140,7 +140,11 @@ export default function Catalogo() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {items.map(item => (
-            <div key={item.id} className="border border-border rounded-lg overflow-hidden bg-card">
+            <div
+              key={item.id}
+              className="border border-border rounded-lg overflow-hidden bg-card cursor-pointer hover:border-primary/50 hover:shadow-md transition-all"
+              onClick={() => setEditing(item)}
+            >
               {item.image_url ? (
                 <img src={item.image_url} alt={item.name} className="w-full h-40 object-cover" />
               ) : (
@@ -172,10 +176,10 @@ export default function Catalogo() {
                       : '—'}
                   </span>
                   <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" onClick={() => setEditing(item)} className="h-8 w-8">
+                    <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); setEditing(item); }} className="h-8 w-8">
                       <Pencil className="w-3.5 h-3.5" />
                     </Button>
-                    <Button variant="ghost" size="icon" onClick={() => remove(item.id)} className="h-8 w-8">
+                    <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); remove(item.id); }} className="h-8 w-8">
                       <Trash2 className="w-3.5 h-3.5" />
                     </Button>
                   </div>
