@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { Lead, STATUS_CONFIG, TAG_CONFIG, CHANNEL_CONFIG, LeadStatus, STAGES } from '@/types/lead';
-import { X, Send, Phone, Calendar, MapPin, Users, MessageCircle, Pencil, UserPlus, Bot, BotOff, MoreVertical, Trash2, Paperclip, FileText, Loader2 } from 'lucide-react';
+import { X, Send, Phone, Calendar, MapPin, Users, MessageCircle, Pencil, UserPlus, Bot, BotOff, MoreVertical, Trash2, Paperclip, FileText, Loader2, BookOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
@@ -14,6 +14,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { EditLeadDialog } from './EditLeadDialog';
 import { ClienteDialog } from './ClienteDialog';
+import { CatalogDialog, CatalogItem } from './CatalogDialog';
 
 interface LeadDetailPanelProps {
   lead: Lead;
@@ -27,6 +28,7 @@ export function LeadDetailPanel({ lead, onClose, onMoveStatus, onSendMessage, on
   const [newMessage, setNewMessage] = useState('');
   const [editOpen, setEditOpen] = useState(false);
   const [clienteOpen, setClienteOpen] = useState(false);
+  const [catalogOpen, setCatalogOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -95,6 +97,35 @@ export function LeadDetailPanel({ lead, onClose, onMoveStatus, onSendMessage, on
     }
   };
 
+  const handleSendCatalogItem = async (item: CatalogItem) => {
+    const priceTxt = item.price
+      ? `R$ ${Number(item.price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+      : '';
+    const lines = [
+      `*${item.name}*`,
+      item.description || '',
+      priceTxt ? `💰 ${priceTxt}` : '',
+    ].filter(Boolean);
+    const caption = lines.join('\n\n');
+    try {
+      if (item.image_url) {
+        await (onSendMessage as any)(lead.id, {
+          sender: 'ai',
+          text: caption,
+          mediaUrl: item.image_url,
+          mediaType: 'image',
+          mediaMime: 'image/jpeg',
+          fileName: `${item.name}.jpg`,
+        });
+      } else {
+        onSendMessage(lead.id, { sender: 'ai', text: caption });
+      }
+      toast.success('Item enviado');
+    } catch (e: any) {
+      toast.error(e?.message || 'Falha ao enviar item');
+    }
+  };
+
   return (
     <div className="fixed inset-y-0 right-0 w-full max-w-md bg-card border-l border-border shadow-2xl z-50 flex flex-col animate-slide-in">
       {/* Header */}
@@ -125,6 +156,7 @@ export function LeadDetailPanel({ lead, onClose, onMoveStatus, onSendMessage, on
 
       <EditLeadDialog lead={lead} open={editOpen} onOpenChange={setEditOpen} />
       <ClienteDialog lead={lead} open={clienteOpen} onOpenChange={setClienteOpen} />
+      <CatalogDialog open={catalogOpen} onOpenChange={setCatalogOpen} onSend={handleSendCatalogItem} />
 
       {/* Info */}
       <div className="p-4 border-b border-border space-y-2">
@@ -274,6 +306,15 @@ export function LeadDetailPanel({ lead, onClose, onMoveStatus, onSendMessage, on
             title="Anexar arquivo"
           >
             {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="shrink-0"
+            onClick={() => setCatalogOpen(true)}
+            title="Abrir catálogo"
+          >
+            <BookOpen className="w-4 h-4" />
           </Button>
           <Textarea
             value={newMessage}
