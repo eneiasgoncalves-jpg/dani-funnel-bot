@@ -1,0 +1,5 @@
+
+INSERT INTO public.catalog_items (name, description, price, image_url, category, active, sort_order) VALUES
+('Carrinho de Pipoca Retrô', E'Transforme seu evento com o irresistível cheirinho e sabor da pipoca quentinha!\n\nPIPOCA COM GOSTINHO DE CINEMA!!', 0, 'https://dflrbdvrcbcgesrlouos.supabase.co/storage/v1/object/public/chat-attachments/catalog%2Fcarrinho-pipoca.png', 'Comidas', true, 44),
+('Casa Turma do Mickey', E'• Espaço necessário montagem: 4m X 4m X 2,50m (CxLxA)\n• Suporta até 100kg\n• Recomendado para crianças a partir de 2 anos (sob supervisão), até 7 anos\n• 4h de evento\n\nDimensões: 3,30m x 2,20m x 2,50m', 0, 'https://dflrbdvrcbcgesrlouos.supabase.co/storage/v1/object/public/chat-attachments/catalog%2Fcasa-turma-mickey.jpeg', 'Infláveis', true, 45),
+('Pink Luxo', E'✨ CONDIÇÃO ESPECIAL DE LANÇAMENTO - TEMPO LIMITADO!! ✨\n\nCombo Pink Luxo: Cama elástica pink + Inflável pink/roxo.\nPerfeito para festas temáticas femininas!', 0, 'https://dflrbdvrcbcgesrlouos.supabase.co/storage/v1/object/public/chat-attachments/catalog%2Fpink-luxo.jpeg', 'Combos', true, 46);
