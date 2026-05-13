@@ -27,6 +27,7 @@ export function CatalogDialog({ open, onOpenChange, onSend }: Props) {
   const [loading, setLoading] = useState(false);
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [q, setQ] = useState('');
+  const [details, setDetails] = useState<CatalogItem | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -91,7 +92,11 @@ export function CatalogDialog({ open, onOpenChange, onSend }: Props) {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {filtered.map(item => (
-                <div key={item.id} className="border border-border rounded-lg p-3 flex gap-3 bg-card">
+                <div
+                  key={item.id}
+                  className="border border-border rounded-lg p-3 flex gap-3 bg-card cursor-pointer hover:border-primary/50 hover:bg-accent/30 transition-colors"
+                  onClick={() => setDetails(item)}
+                >
                   {item.image_url ? (
                     <img
                       src={item.image_url}
@@ -121,7 +126,7 @@ export function CatalogDialog({ open, onOpenChange, onSend }: Props) {
                       </span>
                       <Button
                         size="sm"
-                        onClick={() => handleSend(item)}
+                        onClick={(e) => { e.stopPropagation(); handleSend(item); }}
                         disabled={sendingId === item.id}
                       >
                         {sendingId === item.id ? (
@@ -139,6 +144,53 @@ export function CatalogDialog({ open, onOpenChange, onSend }: Props) {
           )}
         </ScrollArea>
       </DialogContent>
+      <Dialog open={!!details} onOpenChange={(v) => !v && setDetails(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{details?.name}</DialogTitle>
+          </DialogHeader>
+          {details && (
+            <div className="space-y-3">
+              {details.image_url && (
+                <img
+                  src={details.image_url}
+                  alt={details.name}
+                  className="w-full max-h-80 object-contain rounded-md bg-muted"
+                />
+              )}
+              {details.category && (
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                  {details.category}
+                </p>
+              )}
+              <p className="text-lg font-bold text-primary">
+                {details.price
+                  ? `R$ ${Number(details.price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+                  : '—'}
+              </p>
+              {details.description && (
+                <p className="text-sm text-foreground whitespace-pre-wrap">
+                  {details.description}
+                </p>
+              )}
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={() => setDetails(null)}>Fechar</Button>
+                <Button
+                  onClick={() => handleSend(details)}
+                  disabled={sendingId === details.id}
+                >
+                  {sendingId === details.id ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
+                  Enviar para o cliente
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }
