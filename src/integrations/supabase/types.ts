@@ -122,6 +122,7 @@ export type Database = {
         Row: {
           ai_enabled: boolean
           archived: boolean
+          avatar_url: string | null
           channel: Database["public"]["Enums"]["sales_channel"]
           children_age: string | null
           children_count: number | null
@@ -142,6 +143,7 @@ export type Database = {
         Insert: {
           ai_enabled?: boolean
           archived?: boolean
+          avatar_url?: string | null
           channel?: Database["public"]["Enums"]["sales_channel"]
           children_age?: string | null
           children_count?: number | null
@@ -162,6 +164,7 @@ export type Database = {
         Update: {
           ai_enabled?: boolean
           archived?: boolean
+          avatar_url?: string | null
           channel?: Database["public"]["Enums"]["sales_channel"]
           children_age?: string | null
           children_count?: number | null

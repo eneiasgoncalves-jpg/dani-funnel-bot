@@ -342,7 +342,44 @@ function extractIncomingMessages(payload: JsonRecord): ExtractedMessage[] {
     );
 }
 
-async function findOrCreateLead(supabase: any, phone: string, pushName: string) {
+async function fetchProfilePicUrl(
+  number: string,
+  evolutionApiUrl: string,
+  evolutionApiKey: string,
+  evolutionInstanceName: string,
+): Promise<string | null> {
+  try {
+    const digits = number.replace(/\D/g, "");
+    if (!digits) return null;
+    const res = await fetch(
+      `${evolutionApiUrl.replace(/\/$/, "")}/chat/fetchProfilePictureUrl/${evolutionInstanceName}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: evolutionApiKey },
+        body: JSON.stringify({ number: digits }),
+      },
+    );
+    if (!res.ok) {
+      console.warn("fetchProfilePictureUrl non-OK:", res.status);
+      return null;
+    }
+    const data = await res.json().catch(() => ({}));
+    const url = getString((data as any)?.profilePictureUrl) || getString((data as any)?.url);
+    return url || null;
+  } catch (e) {
+    console.warn("fetchProfilePictureUrl error:", (e as Error).message);
+    return null;
+  }
+}
+
+async function findOrCreateLead(
+  supabase: any,
+  phone: string,
+  pushName: string,
+  evolutionApiUrl: string,
+  evolutionApiKey: string,
+  evolutionInstanceName: string,
+) {
   const phoneVariants = normalizeLeadPhone(phone);
 
   const { data: existingLead, error: lookupError } = await supabase
@@ -360,6 +397,10 @@ async function findOrCreateLead(supabase: any, phone: string, pushName: string) 
     const updates: JsonRecord = {};
     if (pushName && !existingLead.name) updates.name = pushName;
     if (existingLead.phone !== phone) updates.phone = phone;
+    if (!existingLead.avatar_url) {
+      const pic = await fetchProfilePicUrl(phone, evolutionApiUrl, evolutionApiKey, evolutionInstanceName);
+      if (pic) updates.avatar_url = pic;
+    }
 
     if (Object.keys(updates).length > 0) {
       const { error: updateError } = await supabase.from("leads").update(updates).eq("id", existingLead.id);
@@ -372,6 +413,8 @@ async function findOrCreateLead(supabase: any, phone: string, pushName: string) 
     return existingLead as LeadRow;
   }
 
+  const avatarUrl = await fetchProfilePicUrl(phone, evolutionApiUrl, evolutionApiKey, evolutionInstanceName);
+
   const { data: newLead, error: insertError } = await supabase
     .from("leads")
     .insert({
@@ -380,6 +423,7 @@ async function findOrCreateLead(supabase: any, phone: string, pushName: string) 
       channel: "whatsapp",
       status: "novo",
       tags: [],
+      avatar_url: avatarUrl,
     })
     .select("*")
     .single();
@@ -744,7 +788,14 @@ async function processIncomingMessage(params: {
     }
   }
 
-  const lead = await findOrCreateLead(supabase, phone, incoming.pushName);
+  const lead = await findOrCreateLead(
+    supabase,
+    phone,
+    incoming.pushName,
+    evolutionApiUrl,
+    evolutionApiKey,
+    evolutionInstanceName,
+  );
 
   if (!incoming.text) {
     return { status: "lead_saved_without_text", leadId: lead.id, messageId: incoming.messageId };

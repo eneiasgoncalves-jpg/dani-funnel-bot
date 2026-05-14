@@ -19,6 +19,7 @@ export interface Lead {
   id: string;
   name: string;
   phone: string;
+  avatarUrl?: string | null;
   eventDate: string;
   city: string;
   neighborhood: string;

@@ -22,8 +22,22 @@ export function LeadCard({ lead, onClick, unreadCount = 0, onDelete, onArchive }
         </span>
       )}
 
-      <div className="flex items-start justify-between mb-2">
-        <h4 className="font-semibold text-card-foreground text-sm truncate">{lead.name}</h4>
+      <div className="flex items-start justify-between mb-2 gap-2">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          {lead.avatarUrl ? (
+            <img
+              src={lead.avatarUrl}
+              alt={lead.name}
+              className="w-7 h-7 rounded-full object-cover shrink-0 border border-border"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+            />
+          ) : (
+            <div className="w-7 h-7 rounded-full bg-muted text-muted-foreground text-xs font-semibold flex items-center justify-center shrink-0">
+              {lead.name?.[0]?.toUpperCase() || '?'}
+            </div>
+          )}
+          <h4 className="font-semibold text-card-foreground text-sm truncate">{lead.name}</h4>
+        </div>
         <div className="flex items-center gap-1 ml-2 shrink-0">
           {!lead.aiEnabled && (
             <span title="IA desativada" className="text-muted-foreground">
