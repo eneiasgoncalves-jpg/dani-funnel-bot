@@ -267,7 +267,7 @@ export function LeadDetailPanel({ lead, onClose, onMoveStatus, onSendMessage, on
               )}
               {msg.text}
               <p className={`text-[10px] mt-1 ${msg.sender === 'ai' ? 'text-primary-foreground/60' : 'text-muted-foreground'}`}>
-                {msg.timestamp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                {msg.timestamp.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })} {msg.timestamp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
               </p>
             </div>
             {msg.sender === 'client' && (
