@@ -12,6 +12,10 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(({ classNa
         className,
       )}
       ref={ref}
+      lang={props.lang ?? "pt-BR"}
+      spellCheck={props.spellCheck ?? true}
+      autoCorrect={props.autoCorrect ?? "on"}
+      autoCapitalize={props.autoCapitalize ?? "sentences"}
       {...props}
     />
   );
