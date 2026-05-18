@@ -10,12 +10,14 @@ import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { BarChart3, Sun, Moon, Archive, Users, Package } from 'lucide-react';
 import { useTheme } from '@/hooks/useTheme';
+import { useMessageNotifier } from '@/hooks/useMessageNotifier';
 import logoDani from '@/assets/logo-dani.jpg';
 import { AddLeadDialog } from '@/components/AddLeadDialog';
 
 const Index = () => {
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
+  useMessageNotifier();
   const {
     selectedLead,
     setSelectedLeadId,
