@@ -42,6 +42,29 @@ const DEFAULT_TEMPLATES: MessageTemplate[] = [
     shortcut: 'pagamento',
     text: 'O pagamento pode ser feito via PIX ou na entrega. Qual prefere?',
   },
+  {
+    id: 'tpl-algodao-doce',
+    shortcut: 'algodao-doce',
+    text: `🎀 Pacote de Algodão Doce ao Vivo no Seu Evento! 🍭
+
+Transforme sua festa em uma experiência ainda mais doce! Com o nosso Pacote de Algodão Doce, a produção acontece ao vivo, durante o evento, garantindo frescor, sabor e aquele cheirinho irresistível que encanta crianças e adultos!
+
+Oferecemos:
+
+✨ Monitora treinada ficará responsável por preparar os algodões com todo cuidado e higiene.
+
+✨ Barraquinha charmosa que deixará seu evento ainda mais lindo
+
+✨ Todos os insumos para fabricação de algodões na hora (açucar, palitos, produtos para higiene)
+
+Investimento
+
+De 2h a 4h de evento para até 100 algodões 
+
+valor: 390,00 
+
+Faça de seu evento um  momento inesquecível!✨💖`,
+  },
 ];
 
 export function getTemplates(): MessageTemplate[] {
@@ -49,7 +72,16 @@ export function getTemplates(): MessageTemplate[] {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_TEMPLATES;
     const parsed = JSON.parse(raw) as MessageTemplate[];
-    return Array.isArray(parsed) && parsed.length ? parsed : DEFAULT_TEMPLATES;
+    if (!Array.isArray(parsed) || !parsed.length) return DEFAULT_TEMPLATES;
+    // Merge in any new default templates that aren't yet stored (by id)
+    const existingIds = new Set(parsed.map(t => t.id));
+    const missing = DEFAULT_TEMPLATES.filter(t => !existingIds.has(t.id));
+    if (missing.length) {
+      const merged = [...parsed, ...missing];
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+      return merged;
+    }
+    return parsed;
   } catch {
     return DEFAULT_TEMPLATES;
   }
