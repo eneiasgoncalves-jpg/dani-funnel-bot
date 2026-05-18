@@ -1,6 +1,6 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useMemo, useEffect } from 'react';
 import { Lead, STATUS_CONFIG, TAG_CONFIG, CHANNEL_CONFIG, LeadStatus, STAGES } from '@/types/lead';
-import { X, Send, Phone, Calendar, MapPin, Users, MessageCircle, Pencil, UserPlus, Bot, BotOff, MoreVertical, Trash2, Paperclip, FileText, Loader2, BookOpen } from 'lucide-react';
+import { X, Send, Phone, Calendar, MapPin, Users, MessageCircle, Pencil, UserPlus, Bot, BotOff, MoreVertical, Trash2, Paperclip, FileText, Loader2, BookOpen, MessageSquareText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
@@ -15,6 +15,8 @@ import { toast } from 'sonner';
 import { EditLeadDialog } from './EditLeadDialog';
 import { ClienteDialog } from './ClienteDialog';
 import { CatalogDialog, CatalogItem } from './CatalogDialog';
+import { MessageTemplatesDialog } from './MessageTemplatesDialog';
+import { getTemplates, MessageTemplate } from '@/lib/messageTemplates';
 
 interface LeadDetailPanelProps {
   lead: Lead;
@@ -31,11 +33,70 @@ export function LeadDetailPanel({ lead, onClose, onMoveStatus, onSendMessage, on
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [templates, setTemplates] = useState<MessageTemplate[]>(() => getTemplates());
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerStart, setPickerStart] = useState<number>(-1);
+  const [pickerQuery, setPickerQuery] = useState('');
+  const [pickerIndex, setPickerIndex] = useState(0);
+
+  const reloadTemplates = () => setTemplates(getTemplates());
+
+  const filteredTemplates = useMemo(() => {
+    const q = pickerQuery.toLowerCase();
+    if (!q) return templates;
+    return templates.filter(
+      t => t.shortcut.toLowerCase().includes(q) || t.text.toLowerCase().includes(q),
+    );
+  }, [templates, pickerQuery]);
+
+  useEffect(() => {
+    setPickerIndex(0);
+  }, [pickerQuery, pickerOpen]);
+
+  const detectBackslashTrigger = (value: string, caret: number) => {
+    // Look for the most recent "\" before the caret with no whitespace/newline between
+    let i = caret - 1;
+    while (i >= 0) {
+      const c = value[i];
+      if (c === '\\') {
+        setPickerStart(i);
+        setPickerQuery(value.slice(i + 1, caret));
+        setPickerOpen(true);
+        return;
+      }
+      if (c === ' ' || c === '\n' || c === '\t') break;
+      i--;
+    }
+    setPickerOpen(false);
+    setPickerStart(-1);
+    setPickerQuery('');
+  };
+
+  const applyTemplate = (tpl: MessageTemplate) => {
+    if (pickerStart < 0) return;
+    const ta = textareaRef.current;
+    const caret = ta?.selectionStart ?? newMessage.length;
+    const before = newMessage.slice(0, pickerStart);
+    const after = newMessage.slice(caret);
+    const next = before + tpl.text + after;
+    setNewMessage(next);
+    setPickerOpen(false);
+    setPickerStart(-1);
+    setPickerQuery('');
+    requestAnimationFrame(() => {
+      const pos = before.length + tpl.text.length;
+      ta?.focus();
+      ta?.setSelectionRange(pos, pos);
+    });
+  };
 
   const handleSend = () => {
     if (!newMessage.trim()) return;
     onSendMessage(lead.id, { sender: 'ai', text: newMessage });
     setNewMessage('');
+    setPickerOpen(false);
   };
 
   const detectMediaType = (mime: string): 'image' | 'video' | 'audio' | 'document' => {
@@ -157,6 +218,7 @@ export function LeadDetailPanel({ lead, onClose, onMoveStatus, onSendMessage, on
       <EditLeadDialog lead={lead} open={editOpen} onOpenChange={setEditOpen} />
       <ClienteDialog lead={lead} open={clienteOpen} onOpenChange={setClienteOpen} />
       <CatalogDialog open={catalogOpen} onOpenChange={setCatalogOpen} onSend={handleSendCatalogItem} />
+      <MessageTemplatesDialog open={templatesOpen} onOpenChange={setTemplatesOpen} onChanged={reloadTemplates} />
 
       {/* Info */}
       <div className="p-4 border-b border-border space-y-2">
@@ -289,7 +351,39 @@ export function LeadDetailPanel({ lead, onClose, onMoveStatus, onSendMessage, on
       </div>
 
       {/* Input */}
-      <div className="p-3 border-t border-border">
+      <div className="p-3 border-t border-border relative">
+        {pickerOpen && filteredTemplates.length > 0 && (
+          <div className="absolute left-3 right-3 bottom-full mb-1 bg-popover border border-border rounded-md shadow-lg max-h-64 overflow-y-auto z-50">
+            <div className="px-2 py-1 text-[10px] uppercase tracking-wider text-muted-foreground border-b border-border flex items-center justify-between">
+              <span>Mensagens pré-definidas</span>
+              <button
+                className="text-primary hover:underline"
+                onMouseDown={e => {
+                  e.preventDefault();
+                  setPickerOpen(false);
+                  setTemplatesOpen(true);
+                }}
+              >
+                Gerenciar
+              </button>
+            </div>
+            {filteredTemplates.map((t, idx) => (
+              <button
+                key={t.id}
+                onMouseDown={e => {
+                  e.preventDefault();
+                  applyTemplate(t);
+                }}
+                className={`w-full text-left px-2 py-1.5 text-xs hover:bg-accent ${
+                  idx === pickerIndex ? 'bg-accent' : ''
+                }`}
+              >
+                <div className="font-mono text-[10px] text-primary">\{t.shortcut}</div>
+                <div className="text-foreground line-clamp-2">{t.text}</div>
+              </button>
+            ))}
+          </div>
+        )}
         <div className="flex gap-2 items-end">
           <input
             ref={fileInputRef}
@@ -316,10 +410,55 @@ export function LeadDetailPanel({ lead, onClose, onMoveStatus, onSendMessage, on
           >
             <BookOpen className="w-4 h-4" />
           </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="shrink-0"
+            onClick={() => setTemplatesOpen(true)}
+            title="Mensagens pré-definidas (digite \ no chat)"
+          >
+            <MessageSquareText className="w-4 h-4" />
+          </Button>
           <Textarea
+            ref={textareaRef}
             value={newMessage}
-            onChange={e => setNewMessage(e.target.value)}
+            onChange={e => {
+              const v = e.target.value;
+              setNewMessage(v);
+              const caret = e.target.selectionStart ?? v.length;
+              detectBackslashTrigger(v, caret);
+            }}
+            onKeyUp={e => {
+              const ta = e.currentTarget;
+              if (pickerOpen) detectBackslashTrigger(ta.value, ta.selectionStart ?? 0);
+            }}
+            onClick={e => {
+              const ta = e.currentTarget;
+              detectBackslashTrigger(ta.value, ta.selectionStart ?? 0);
+            }}
             onKeyDown={e => {
+              if (pickerOpen && filteredTemplates.length > 0) {
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault();
+                  setPickerIndex(i => Math.min(i + 1, filteredTemplates.length - 1));
+                  return;
+                }
+                if (e.key === 'ArrowUp') {
+                  e.preventDefault();
+                  setPickerIndex(i => Math.max(i - 1, 0));
+                  return;
+                }
+                if (e.key === 'Enter' || e.key === 'Tab') {
+                  e.preventDefault();
+                  applyTemplate(filteredTemplates[pickerIndex]);
+                  return;
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  setPickerOpen(false);
+                  return;
+                }
+              }
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 handleSend();
