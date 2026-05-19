@@ -181,6 +181,135 @@ function extractMessageText(rawMessage: JsonRecord): string {
   return "";
 }
 
+type IncomingMedia = {
+  type: "image" | "video" | "audio" | "document";
+  mime: string;
+  fileName: string;
+  directUrl: string;
+};
+
+function extractMediaInfo(rawMessage: JsonRecord): IncomingMedia | null {
+  const message = unwrapMessageContainer(rawMessage);
+  const img = asRecord(message.imageMessage);
+  const vid = asRecord(message.videoMessage);
+  const aud = asRecord(message.audioMessage);
+  const doc = asRecord(message.documentMessage);
+  const stk = asRecord(message.stickerMessage);
+
+  if (Object.keys(img).length > 0) {
+    return {
+      type: "image",
+      mime: getString(img.mimetype) || "image/jpeg",
+      fileName: `image-${Date.now()}.jpg`,
+      directUrl: getString(img.url),
+    };
+  }
+  if (Object.keys(vid).length > 0) {
+    return {
+      type: "video",
+      mime: getString(vid.mimetype) || "video/mp4",
+      fileName: `video-${Date.now()}.mp4`,
+      directUrl: getString(vid.url),
+    };
+  }
+  if (Object.keys(aud).length > 0) {
+    const mime = getString(aud.mimetype) || "audio/ogg";
+    const ext = mime.includes("mpeg") ? "mp3" : mime.includes("wav") ? "wav" : "ogg";
+    return {
+      type: "audio",
+      mime,
+      fileName: `audio-${Date.now()}.${ext}`,
+      directUrl: getString(aud.url),
+    };
+  }
+  if (Object.keys(doc).length > 0) {
+    return {
+      type: "document",
+      mime: getString(doc.mimetype) || "application/octet-stream",
+      fileName: getString(doc.fileName) || `arquivo-${Date.now()}`,
+      directUrl: getString(doc.url),
+    };
+  }
+  if (Object.keys(stk).length > 0) {
+    return {
+      type: "image",
+      mime: getString(stk.mimetype) || "image/webp",
+      fileName: `sticker-${Date.now()}.webp`,
+      directUrl: getString(stk.url),
+    };
+  }
+  return null;
+}
+
+async function downloadMediaBase64(
+  messageId: string,
+  rawMessageData: JsonRecord,
+  evolutionApiUrl: string,
+  evolutionApiKey: string,
+  evolutionInstanceName: string,
+): Promise<{ base64: string; mimetype: string } | null> {
+  try {
+    const baseUrl = evolutionApiUrl.replace(/\/+$/, "");
+    const res = await fetch(
+      `${baseUrl}/chat/getBase64FromMediaMessage/${evolutionInstanceName}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: evolutionApiKey },
+        body: JSON.stringify({
+          message: { key: { id: messageId }, ...rawMessageData },
+          convertToMp4: false,
+        }),
+      },
+    );
+    if (!res.ok) {
+      console.warn("getBase64FromMediaMessage non-OK:", res.status, await res.text());
+      return null;
+    }
+    const data = await res.json().catch(() => ({}));
+    const base64 = getString((data as any)?.base64) || getString((data as any)?.data);
+    const mimetype = getString((data as any)?.mimetype) || "";
+    if (!base64) return null;
+    return { base64, mimetype };
+  } catch (e) {
+    console.warn("downloadMediaBase64 error:", (e as Error).message);
+    return null;
+  }
+}
+
+function base64ToUint8Array(b64: string): Uint8Array {
+  const clean = b64.replace(/^data:[^;]+;base64,/, "");
+  const binary = atob(clean);
+  const len = binary.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+async function uploadIncomingMedia(
+  supabase: any,
+  leadId: string,
+  bytes: Uint8Array,
+  mime: string,
+  fileName: string,
+): Promise<string | null> {
+  try {
+    const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const path = `${leadId}/incoming/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeName}`;
+    const { error } = await supabase.storage
+      .from("chat-attachments")
+      .upload(path, bytes, { contentType: mime, upsert: false });
+    if (error) {
+      console.warn("storage upload error:", error.message);
+      return null;
+    }
+    const { data } = supabase.storage.from("chat-attachments").getPublicUrl(path);
+    return data?.publicUrl || null;
+  } catch (e) {
+    console.warn("uploadIncomingMedia error:", (e as Error).message);
+    return null;
+  }
+}
+
 function extractPhoneFromJid(jid: string): string {
   const digits = jid.replace(/@.+$/, "").replace(/\D/g, "");
   return digits ? `+${digits}` : "";
