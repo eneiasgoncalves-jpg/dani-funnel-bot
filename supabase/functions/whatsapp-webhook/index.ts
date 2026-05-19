@@ -941,11 +941,36 @@ async function processIncomingMessage(params: {
     evolutionInstanceName,
   );
 
-  if (!incoming.text) {
-    return { status: "lead_saved_without_text", leadId: lead.id, messageId: incoming.messageId };
+  // Processa mídia recebida (imagem, vídeo, áudio, documento, sticker)
+  let savedMedia: { url: string; type: string; mime: string; fileName: string } | null = null;
+  if (incoming.media) {
+    const dl = await downloadMediaBase64(
+      incoming.messageId,
+      incoming.rawMessage,
+      evolutionApiUrl,
+      evolutionApiKey,
+      evolutionInstanceName,
+    );
+    if (dl?.base64) {
+      const bytes = base64ToUint8Array(dl.base64);
+      const mime = dl.mimetype || incoming.media.mime;
+      const url = await uploadIncomingMedia(supabase, lead.id, bytes, mime, incoming.media.fileName);
+      if (url) {
+        savedMedia = {
+          url,
+          type: incoming.media.type,
+          mime,
+          fileName: incoming.media.fileName,
+        };
+      }
+    }
   }
 
-  await saveMessage(supabase, lead.id, "client", incoming.text);
+  if (!incoming.text && !savedMedia) {
+    return { status: "lead_saved_without_content", leadId: lead.id, messageId: incoming.messageId };
+  }
+
+  await saveMessage(supabase, lead.id, "client", incoming.text || "", savedMedia);
 
   const autoAttendanceEnabled = await getAutoAttendanceEnabled(supabase);
   if (!autoAttendanceEnabled) {
@@ -962,6 +987,11 @@ async function processIncomingMessage(params: {
     await saveMessage(supabase, lead.id, "ai", waitMessage);
     await sendWhatsappReply(replyTarget, waitMessage, evolutionApiUrl, evolutionApiKey, evolutionInstanceName);
     return { status: "already_transferred", leadId: lead.id, messageId: incoming.messageId, reply: waitMessage };
+  }
+
+  // Sem texto (apenas mídia): salva e não dispara IA, pois ela é só de texto
+  if (!incoming.text) {
+    return { status: "media_saved", leadId: lead.id, messageId: incoming.messageId };
   }
 
   const replyText = await buildAiReply(supabase, lead, phone, lovableApiKey);
