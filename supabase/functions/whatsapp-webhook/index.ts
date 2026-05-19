@@ -415,6 +415,8 @@ type ExtractedMessage = IncomingMessage & {
   lidDigits: string;
   previousRemoteJid: string;
   rawRemoteJid: string;
+  media: IncomingMedia | null;
+  rawMessage: JsonRecord;
 };
 
 function extractIncomingMessages(payload: JsonRecord): ExtractedMessage[] {
@@ -446,6 +448,7 @@ function extractIncomingMessages(payload: JsonRecord): ExtractedMessage[] {
       const stillUnresolved = isLid && !phone;
 
       const messageText = extractMessageText(asRecord(candidate.message));
+      const media = extractMediaInfo(asRecord(candidate.message));
       const pushName =
         getString(candidate.pushName) || getString(dataRecord.pushName) || getString(payload.pushName) || phone;
 
@@ -460,6 +463,8 @@ function extractIncomingMessages(payload: JsonRecord): ExtractedMessage[] {
         lidDigits: stillUnresolved ? lidDigits : "",
         previousRemoteJid,
         rawRemoteJid,
+        media,
+        rawMessage: candidate,
       };
     })
     .filter(
@@ -564,11 +569,21 @@ async function findOrCreateLead(
   return newLead as LeadRow;
 }
 
-async function saveMessage(supabase: any, leadId: string, sender: "client" | "ai", text: string) {
+async function saveMessage(
+  supabase: any,
+  leadId: string,
+  sender: "client" | "ai",
+  text: string,
+  media?: { url: string; type: string; mime: string; fileName: string } | null,
+) {
   const { error } = await supabase.from("messages").insert({
     lead_id: leadId,
     sender,
     text,
+    media_url: media?.url || null,
+    media_type: media?.type || null,
+    media_mime: media?.mime || null,
+    file_name: media?.fileName || null,
   });
 
   if (error) {
