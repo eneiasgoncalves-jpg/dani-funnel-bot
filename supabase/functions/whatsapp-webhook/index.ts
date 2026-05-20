@@ -469,10 +469,9 @@ function extractIncomingMessages(payload: JsonRecord): ExtractedMessage[] {
     })
     .filter(
       (message) =>
-        Boolean(message.phone) &&
+        (Boolean(message.phone) || message.isLid) &&
         !message.remoteJid.endsWith("@g.us") &&
-        !message.remoteJid.includes("broadcast") &&
-        !message.isLid,
+        !message.remoteJid.includes("broadcast"),
     );
 }
 
