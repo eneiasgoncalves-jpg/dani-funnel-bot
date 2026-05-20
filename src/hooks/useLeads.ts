@@ -35,6 +35,10 @@ function mapDbMessage(m: DbMessage): ChatMessage {
     sender: m.sender as 'client' | 'ai',
     text: m.text,
     timestamp: new Date(m.created_at),
+    mediaUrl: (m as any).media_url ?? null,
+    mediaType: (m as any).media_type ?? null,
+    mediaMime: (m as any).media_mime ?? null,
+    fileName: (m as any).file_name ?? null,
   };
 }
 
